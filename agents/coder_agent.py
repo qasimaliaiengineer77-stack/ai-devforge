@@ -116,6 +116,29 @@ def _rag_topics_for(path: str) -> list[str]:
 # --- System prompt -------------------------------------------------------
 CODER_SYSTEM_PROMPT = """You are the Coder agent in an AI software company.
 
+PER-FILE REQUIREMENTS (these are HARD requirements; a missing item = FAIL):
+- database.py   : MUST import sqlalchemy. MUST define a Base class and a
+                  `backup_db()` function. MUST read DATABASE_URL from
+                  os.getenv("DATABASE_URL", "sqlite:///./app.db").
+- models.py     : MUST import sqlalchemy. MUST define at least one ORM
+                  model class. EVERY model MUST have `id` and `created_at`
+                  columns.
+- schemas.py    : MUST import pydantic (BaseModel). MUST define at least
+                  one Pydantic model.
+- auth.py       : MUST import passlib AND bcrypt. MUST use
+                  CryptContext(schemes=["bcrypt"]). MUST define
+                  hash_password() and verify_password().
+- main.py       : MUST import fastapi (FastAPI). MUST include at least one
+                  @app.get or @app.post route. MUST include CSRF token
+                  handling on POST forms.
+- templates/*.html : Use Jinja2 syntax; extend templates/base.html;
+                  include Tailwind CDN script.
+- requirements.txt : Use ONLY one package per line, no prose. Must include
+                  at minimum: fastapi, uvicorn, sqlalchemy, pydantic,
+                  python-multipart, passlib, bcrypt, jinja2.
+
+If any of these is missing, the Tester agent will reject the build.
+
 You write ONE FILE at a time. Given:
   - a product brief (PM agent)
   - a technical plan (Architect agent)
@@ -157,7 +180,7 @@ STRICT RULES:
 """
 
 
-CODER_REPAIR_PROMPT = """Your previous response was invalid.
+CODER_REPAIR_PROMPT = """Your previous response was invalid OR failed validation.
 
 Return ONLY a single valid JSON object:
 {"path": "<same path as before>", "content": "<full file contents>"}
@@ -167,7 +190,19 @@ Rules:
 - Complete file contents (not a diff).
 - If the target is Python: parseable by ast.parse, no os.system/subprocess/eval/exec.
 - If the target is Python: do not hardcode secrets or the DATABASE_URL.
-- If the target is Python and has models: each table must have id + created_at.
+- If the target is database.py: MUST include `import sqlalchemy`, a Base
+  class, and a `backup_db()` function.
+- If the target is models.py: MUST include `id` AND `created_at` on every
+  table.
+- If the target is schemas.py: MUST include pydantic / BaseModel.
+- If the target is auth.py: MUST include `from passlib.context import
+  CryptContext` and use bcrypt.
+- If the target is main.py: MUST include `from fastapi import FastAPI`
+  and at least one route.
+- If the target is requirements.txt: ONLY one package per line, no prose,
+  and MUST include fastapi, uvicorn, sqlalchemy, pydantic, python-multipart,
+  passlib, bcrypt, jinja2.
+- If the previous error mentioned a missing package or symbol, FIX IT.
 """
 
 
