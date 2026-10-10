@@ -168,10 +168,19 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
         # Final status determination
         next_route = running.get("next_route", "") or ""
         approval_status = running.get("approval_status", "none")
+        test_result = running.get("test_result", "")
+        coder_attempts = int(running.get("coder_attempts", 0) or 0)
 
         if approval_status == "pending":
             final_status = "awaiting_approval"
         elif next_route == "abort" or running.get("errors"):
+            final_status = "failed"
+        elif test_result == "fail":
+            # Tester failed and attempts are exhausted -> workflow aborted
+            # even though the abort node set next_route itself.
+            final_status = "failed"
+        elif not running.get("code_files"):
+            # Coder never produced files
             final_status = "failed"
         else:
             final_status = "done"

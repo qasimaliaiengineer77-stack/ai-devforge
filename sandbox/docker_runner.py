@@ -112,6 +112,31 @@ def _write_workspace(files: list[dict], workspace: Path) -> int:
     return written
 
 
+def _sanitize_requirements(workspace: Path) -> None:
+    """
+    Rewrite requirements.txt keeping only well-formed package lines.
+    20b models sometimes emit comments/notes/prose into requirements.txt
+    which pip then fails on. We keep only lines matching a valid PEP 508
+    name plus an optional version specifier.
+    """
+    import re as _re
+    req = workspace / "requirements.txt"
+    if not req.exists():
+        return
+    allowed = _re.compile(
+        r"^\s*[A-Za-z0-9][A-Za-z0-9._\-]{0,80}"
+        r"([<>=!~]{1,2}[A-Za-z0-9._,*+!\-]+)?(\s*;.*)?\s*$"
+    )
+    cleaned = []
+    for line in req.read_text(encoding="utf-8", errors="replace").splitlines():
+        s2 = line.strip()
+        if not s2 or s2.startswith("#"):
+            continue
+        if allowed.match(s2):
+            cleaned.append(s2)
+    req.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+
+
 def _ensure_requirements_with_httpx(workspace: Path) -> None:
     """
     FastAPI's TestClient needs httpx. Ensure it is in requirements.txt.
@@ -296,6 +321,7 @@ def run_sandbox(
             return result
 
         _ensure_requirements_with_httpx(workspace)
+        _sanitize_requirements(workspace)
         _ensure_dockerfile(workspace)
         _copy_test_runner(workspace, test_script_path)
 
