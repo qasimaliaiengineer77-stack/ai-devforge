@@ -1,8 +1,8 @@
 # PROJECT STATUS — AI Software Company
 
 Last updated: 2026-10-10
-Current step: Step 15 (Human Approval Gate — server-side) — waiting for user approval
-Last completed: Step 14 (Deploy Agent — GitHub + Port Manager + local serve) — COMPLETE
+Current step: Step 16 (LangGraph Workflow) — waiting for user approval
+Last completed: Step 15 (Human Approval Gate — server-side) — COMPLETE
 ## Architecture
 AI Software Company — Final Production Architecture v7.0
 7 agents, 18 steps, 37 fixes. Source of truth: master prompt file.
@@ -180,4 +180,61 @@ Port Manager, local serve).
 - Dependency check: PyPI + version + pip-audit CVE scan, banned pkgs blocked.
 - Tester runs in Docker sandbox with full hardening; 3-level check.
 - Improver uses SYS_ADMIN + shm=2g for Lighthouse (trusted tool, ephemeral),
-  while generated app containers keep --cap-drop ALL.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+  while generated app containers keep --cap-drop ALL. 
+
+## Step 15 — Human Approval Gate (server-side) (COMPLETE)
+
+### Files created/updated:
+- db/models.py: added `ApprovalRequest` table
+    id, job_id (UNIQUE), requested_by FK, status (pending/approved/rejected),
+    decision (yes/no/NULL), decided_by FK, decided_at, created_at
+- db/audit.py: added ACTION_APPROVAL_REQUESTED / GRANTED / REJECTED
+- security/approval.py:
+    request_approval(db, job_id, requested_by) -> ApprovalRequest (idempotent)
+    decide_approval(db, job_id, decision, decider_user_id)
+    get_approval(db, job_id), is_approved(db, job_id)
+    State transitions: (none)->pending->approved|rejected
+    Once decided, cannot change (ApprovalAlreadyDecidedError)
+    Audit log on each state change; commit on success, rollback on exception
+- api/routes_approval.py:
+    POST /approve/{job_id}  body {"decision":"yes"|"no"}
+        - role check: user.role == "approver" (403 otherwise)
+        - CSRF check via X-CSRF-Token (403 otherwise)
+        - 404 if not found, 409 if already decided, 400 if invalid decision
+    GET  /approval/{job_id}
+        - any logged-in user; returns status or "none"
+- api/main.py:
+    - Fixed: auth_router was accidentally removed in Step 15 (restored)
+    - added approval_router include
+    - current routes: /, /health, /login, /logout, /me,
+                      /approve/{job_id}, /approval/{job_id}
+
+### Step 15 tests (12/12 PASS)
+T1  login both users (user1, approver1)
+T2  GET /approval before request -> status "none"
+T3  request created -> status "pending"
+T4  GET -> "pending"
+T5  user role POST /approve -> 403 "Approval Authority role required"
+T6  approver without CSRF -> 403 "CSRF check failed"
+T7  approver with CSRF -> 200 status "approved", decided_by set
+T8  GET -> "approved"
+T9  duplicate decision -> 409 "already 'approved'"
+T10 reject flow -> 200 status "rejected", decision "no"
+T11 GET rejected job -> "rejected"
+T12 invalid decision ("maybe") -> 400 "decision must be 'yes' or 'no'"
+
+### Security features verified
+- Role-based access (Section 7)
+- CSRF (Section 8) — POST requires X-CSRF-Token
+- Idempotency: once decided, further POST -> 409
+- Input validation: decision must be "yes"|"no"
+- Audit log actions: approval_requested, approval_granted, approval_rejected
+- Atomic writes: commit on success, rollback on exception
+
+### Git commit (Step 15)
+949e055  Step 15: Human Approval Gate (server-side, /approve + /approval)
+
+### Note on test users
+- approver1 (role=approver) and user1 (role=user) created by the test.
+  These remain in the SQLite DB. Fine for further testing; the platform
+  seed script only creates an admin (Step 3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
