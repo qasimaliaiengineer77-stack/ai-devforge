@@ -15,10 +15,12 @@ Architecture references:
 import os
 
 # --- Models ---------------------------------------------------------------
-# Groq's official replacement for the deprecated llama-3.3-70b-versatile.
-PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "openai/gpt-oss-120b")
-# Groq's official replacement for the deprecated llama-3.1-8b-instant.
-FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
+# TEMPORARY (2026-10-10): the 120b model's daily 200k token limit was
+# exhausted during Step 17 testing. The 20b model has a 500k TPD limit,
+# so we swap primary/fallback to keep testing today. Revert after reset.
+# TODO: swap back to 120b primary once daily TPD resets.
+PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "openai/gpt-oss-20b")
+FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
 
 # --- Output token caps ----------------------------------------------------
 # Free tier on Groq caps chat models at 8,000 TPM. We cap output per call

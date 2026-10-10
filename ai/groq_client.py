@@ -189,12 +189,24 @@ async def chat(
 
             except RateLimitError as exc:
                 last_exc = exc
-                wait = _extract_retry_after(exc)
-                if wait is None:
-                    wait = min(
+                raw_wait = _extract_retry_after(exc)
+                # If the provider asks us to wait longer than our cap, do
+                # not waste time retrying this model; move to the next one.
+                if raw_wait is not None and raw_wait > cfg.BACKOFF_MAX_SECONDS:
+                    logger.warning(
+                        "groq rate_limit_skip model=%s retry_after=%.1fs "
+                        "(> cap %.1fs) - moving to next model",
+                        model, raw_wait, cfg.BACKOFF_MAX_SECONDS,
+                    )
+                    break
+                wait = (
+                    raw_wait
+                    if raw_wait is not None
+                    else min(
                         cfg.BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)),
                         cfg.BACKOFF_MAX_SECONDS,
                     )
+                )
                 logger.warning(
                     "groq rate_limit model=%s attempt=%d wait=%.1fs msg=%s",
                     model,
