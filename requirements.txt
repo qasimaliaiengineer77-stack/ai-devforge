@@ -41,3 +41,6 @@ fastembed==0.8.0
 
 # ---- Dependency check (Step 11) ----
 pip-audit==2.7.3
+
+# ---- Deploy (Step 14) ----
+gitpython==3.1.43

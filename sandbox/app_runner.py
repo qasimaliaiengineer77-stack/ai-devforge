@@ -222,7 +222,7 @@ def run_app_container(job_id, host_port=None):
             cmd,
             capture_output=True, text=True,
             encoding="utf-8", errors="replace",
-            timeout=30,
+                        timeout=90,   # Docker Desktop: first-run copies image into VM
         )
         result.returncode = proc.returncode
         result.log = _tail((proc.stdout or "") + "\n" + (proc.stderr or ""))
@@ -271,19 +271,58 @@ def cleanup_app(job_id: str, output_root: Path) -> None:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def wait_until_ready(container_name: str, timeout_s: int = RUN_START_TIMEOUT_S) -> bool:
+def wait_until_ready(
+    container_name: str,
+    timeout_s: int = RUN_START_TIMEOUT_S,
+) -> bool:
+    """
+    Wait until the app inside the container responds to HTTP /health,
+    with a fallback to log-based detection.
+
+    Why HTTP first: on Docker Desktop for Windows, `docker logs` from a
+    detached container can be empty even when the app is running. Probing
+    the app directly via `docker exec` + urllib is more reliable.
+
+    Returns True when ready, False on timeout.
+    """
     deadline = time.time() + timeout_s
     while time.time() < deadline:
+        # --- Try HTTP /health from inside the container (fast + reliable) ---
         try:
             r = subprocess.run(
-                ["docker", "logs", container_name],
+                [
+                    "docker", "exec", container_name,
+                    "python", "-c",
+                    (
+                        "import sys, urllib.request\n"
+                        "try:\n"
+                        "    with urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2) as resp:\n"
+                        "        sys.exit(0 if resp.status == 200 else 1)\n"
+                        "except Exception:\n"
+                        "    sys.exit(1)\n"
+                    ),
+                ],
+                capture_output=True, timeout=6,
+            )
+            if r.returncode == 0:
+                return True
+        except Exception:
+            pass
+
+        # --- Fallback: parse docker logs ---
+        try:
+            r = subprocess.run(
+                ["docker", "logs", "--tail", "200", container_name],
                 capture_output=True, text=True,
                 encoding="utf-8", errors="replace", timeout=5,
             )
             text = (r.stdout or "") + (r.stderr or "")
-            if "Uvicorn running on" in text or "Application startup complete" in text:
+            if ("Uvicorn running on" in text
+                    or "Application startup complete" in text
+                    or "GET /health HTTP" in text):
                 return True
         except Exception:
             pass
-        time.sleep(0.5)
+
+        time.sleep(1.0)
     return False
