@@ -113,3 +113,62 @@ class ApprovalRequest(Base):
             f"<ApprovalRequest id={self.id} job_id={self.job_id!r} "
             f"status={self.status!r}>"
         )
+
+
+class Job(Base):
+    """
+    Platform job record (Step 17).
+
+    One row per user build. Holds the requirement, current status,
+    current workflow node, error info, deploy info, and JSON blobs for
+    features/files/scores. This is the source of truth for the platform
+    UI (jobs.html, job_status.html) and the polling endpoint
+    GET /status/{job_id}.
+    """
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    requirement: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Workflow status: building|testing|awaiting_approval|deploying|done|
+    #                  failed|rolled_back|rejected
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="building", index=True
+    )
+    current_node: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=""
+    )
+
+    # JSON-encoded blobs (kept as TEXT for portability)
+    features_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    files_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Last error (safe to show to user; no secrets)
+    error_agent: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_attempt: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Deploy info (populated after Deploy Agent runs)
+    live_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    github_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Job job_id={self.job_id!r} status={self.status!r}>"

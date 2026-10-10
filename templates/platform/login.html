@@ -1,6 +1,6 @@
-{% extends "platform/base.html" %}
+﻿{% extends "platform/base.html" %}
 
-{% block title %}Login — AI Software Company{% endblock %}
+{% block title %}Login â€” AI Software Company{% endblock %}
 
 {% block content %}
 <div class="max-w-md mx-auto mt-8">
@@ -9,8 +9,8 @@
         Login required to submit builds, view jobs, and approve deployments.
     </p>
 
-    <form method="post" action="/login" class="space-y-4 bg-gray-50 p-6 rounded border border-gray-200">
-        <!-- CSRF token (Section 8) — generated server-side and embedded in the form -->
+    <form method="post" action="/ui/login" class="space-y-4 bg-gray-50 p-6 rounded border border-gray-200">
+        <!-- CSRF token (Section 8) â€” generated server-side and embedded in the form -->
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
         <div>

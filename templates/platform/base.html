@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -35,7 +35,7 @@
         {% if current_user %}
         <div class="flex items-center gap-3 text-sm">
             <span class="hidden sm:inline">{{ current_user.username }} ({{ current_user.role }})</span>
-            <form method="post" action="/logout" class="inline">
+            <form method="post" action="/ui/logout" class="inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                 <button type="submit"
                         class="btn bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">
@@ -65,7 +65,7 @@
 
     <!-- Footer -->
     <footer class="bg-gray-100 text-gray-600 text-xs px-4 py-3 text-center">
-        AI Software Company — v0.1.0 (Step 17)
+        AI Software Company â€” v0.1.0 (Step 17)
     </footer>
 
     {% block scripts %}{% endblock %}

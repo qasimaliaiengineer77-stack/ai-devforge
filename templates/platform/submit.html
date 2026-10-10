@@ -1,17 +1,17 @@
-{% extends "platform/base.html" %}
+﻿{% extends "platform/base.html" %}
 
-{% block title %}New Build — AI Software Company{% endblock %}
+{% block title %}New Build â€” AI Software Company{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl mx-auto">
     <h1 class="text-2xl font-bold mb-2">New Build</h1>
     <p class="text-sm text-gray-600 mb-6">
-        Describe the web app you want. Urdu, Roman Urdu, or English — all are welcome.
+        Describe the web app you want. Urdu, Roman Urdu, or English â€” all are welcome.
         The multi-agent system will plan, design, code, test, and improve it, then
         wait for your approval before deploying locally.
     </p>
 
-    <form id="build-form" method="post" action="/build"
+    <form id="build-form" method="post" action="/ui/build"
           class="space-y-4 bg-gray-50 p-6 rounded border border-gray-200">
 
         <!-- CSRF token -->
@@ -37,7 +37,7 @@
             <div class="mt-3 space-y-2 text-gray-700">
                 <label class="flex items-center gap-2">
                     <input type="checkbox" name="skip_improver" value="1" />
-                    Skip Improver (Lighthouse) — faster build
+                    Skip Improver (Lighthouse) â€” faster build
                 </label>
                 <label class="flex items-center gap-2">
                     <input type="checkbox" name="skip_github" value="1" />
@@ -52,7 +52,7 @@
                 Start Build
             </button>
             <span id="submit-hint" class="text-sm text-gray-500 hidden">
-                Submitting… you will be redirected to the job page.
+                Submittingâ€¦ you will be redirected to the job page.
             </span>
         </div>
     </form>
@@ -76,7 +76,7 @@
 
         form.addEventListener("submit", function () {
             btn.disabled = true;
-            btn.textContent = "Submitting…";
+            btn.textContent = "Submittingâ€¦";
             hint.classList.remove("hidden");
         });
     })();
