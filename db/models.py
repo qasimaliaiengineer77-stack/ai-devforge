@@ -75,3 +75,41 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog id={self.id} action={self.action!r} status={self.status!r}>"
+
+
+class ApprovalRequest(Base):
+    """
+    Human approval record per job (Section 23, Section 24).
+
+    One row per job_id. Starts as 'pending'. When an Approval Authority
+    decides, status becomes 'approved' or 'rejected' and decided_by /
+    decided_at / decision are set.
+    """
+    __tablename__ = "approval_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+    requested_by: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", index=True
+    )
+    decision: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    decided_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ApprovalRequest id={self.id} job_id={self.job_id!r} "
+            f"status={self.status!r}>"
+        )

@@ -1,6 +1,9 @@
 """
-AI Software Company — FastAPI backend (Step 2 + Step 3)
-Basic server with /health, / and auth routes (/login, /logout, /me).
+AI Software Company — FastAPI backend (Step 2 + Step 3 + Step 15)
+Routes:
+  /health, /                          — platform health
+  /login, /logout, /me                — auth (Step 3)
+  /approve/{job_id}, /approval/{job_id} — approval (Step 15)
 """
 
 import os
@@ -10,6 +13,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from api.routes_auth import router as auth_router
+from api.routes_approval import router as approval_router
 from db.database import init_db
 
 # Load .env file (secrets yahan se aayenge)
@@ -36,8 +40,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Auth routes
+# Auth routes (login / logout / me)
 app.include_router(auth_router)
+
+# Approval routes (approve / approval status)
+app.include_router(approval_router)
 
 
 @app.get("/health")

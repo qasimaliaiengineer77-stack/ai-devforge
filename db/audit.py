@@ -25,6 +25,9 @@ ACTION_CSRF_FAILED = "csrf_failed"
 ACTION_AUTH_DENIED = "auth_denied"
 ACTION_USER_CREATED = "user_created"
 ACTION_SEED_RUN = "seed_run"
+ACTION_APPROVAL_REQUESTED = "approval_requested"
+ACTION_APPROVAL_GRANTED = "approval_granted"
+ACTION_APPROVAL_REJECTED = "approval_rejected"
 
 
 def log_action(
