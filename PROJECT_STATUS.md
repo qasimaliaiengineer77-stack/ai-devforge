@@ -159,10 +159,12 @@ Wait for user approval to start Step 14 (Deploy Agent — GitHub push,
 Port Manager, local serve).
 
 ## Backup / Git commit status
-- No git repo initialized yet.
-- No backup yet.
-- All files created locally (uncommitted).
-- Step 14 WILL require git init (GitPython push to GitHub).
+- Git repo initialized at Step 14 start.
+- First commit done: e7eac9a "Step 14: Initial commit — steps 1-13 complete"
+- 47 files committed, 6389 insertions.
+- .env, venv/, ai_company.db, output/, logs/ excluded by .gitignore (VERIFIED).
+- GitHub remote NOT added yet — Step 14 later substeps.
+- Repo will be created as PRIVATE on GitHub (user decision).
 
 ## Security notes
 - Redis bound to 127.0.0.1 only.
