@@ -1,0 +1,84 @@
+{% extends "platform/base.html" %}
+
+{% block title %}New Build — AI Software Company{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <h1 class="text-2xl font-bold mb-2">New Build</h1>
+    <p class="text-sm text-gray-600 mb-6">
+        Describe the web app you want. Urdu, Roman Urdu, or English — all are welcome.
+        The multi-agent system will plan, design, code, test, and improve it, then
+        wait for your approval before deploying locally.
+    </p>
+
+    <form id="build-form" method="post" action="/build"
+          class="space-y-4 bg-gray-50 p-6 rounded border border-gray-200">
+
+        <!-- CSRF token -->
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+        <div>
+            <label for="requirement" class="block text-sm font-medium mb-1">
+                Your requirement
+            </label>
+            <textarea id="requirement" name="requirement" rows="8" required
+                      minlength="10" maxlength="4000"
+                      placeholder="Example: Make a simple todo app with login, add/edit/delete tasks, and mark them completed."
+                      class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"></textarea>
+            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                <span>Minimum 10 characters, maximum 4000.</span>
+                <span id="char-count">0 / 4000</span>
+            </div>
+        </div>
+
+        <!-- Advanced options (collapsed by default) -->
+        <details class="text-sm">
+            <summary class="cursor-pointer text-gray-700">Advanced options</summary>
+            <div class="mt-3 space-y-2 text-gray-700">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="skip_improver" value="1" />
+                    Skip Improver (Lighthouse) — faster build
+                </label>
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="skip_github" value="1" />
+                    Skip GitHub push even if credentials exist
+                </label>
+            </div>
+        </details>
+
+        <div class="flex items-center gap-3">
+            <button id="submit-btn" type="submit"
+                    class="btn bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 font-medium disabled:opacity-50">
+                Start Build
+            </button>
+            <span id="submit-hint" class="text-sm text-gray-500 hidden">
+                Submitting… you will be redirected to the job page.
+            </span>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const ta = document.getElementById("requirement");
+        const counter = document.getElementById("char-count");
+        const form = document.getElementById("build-form");
+        const btn = document.getElementById("submit-btn");
+        const hint = document.getElementById("submit-hint");
+
+        function updateCount() {
+            counter.textContent = ta.value.length + " / 4000";
+        }
+        ta.addEventListener("input", updateCount);
+        updateCount();
+
+        form.addEventListener("submit", function () {
+            btn.disabled = true;
+            btn.textContent = "Submitting…";
+            hint.classList.remove("hidden");
+        });
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,297 @@
+{% extends "platform/base.html" %}
+
+{% block title %}Job {{ job_id }} — AI Software Company{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h1 class="text-2xl font-bold">Job</h1>
+            <p class="text-xs font-mono text-gray-500">{{ job_id }}</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span id="status-badge"
+                  class="inline-block px-3 py-1 rounded text-sm bg-gray-100 text-gray-700">
+                {{ status }}
+            </span>
+            <a href="/jobs" class="text-sm text-blue-600 hover:underline">← All jobs</a>
+        </div>
+    </div>
+
+    <!-- Error box (F19) -->
+    <div id="error-box" class="hidden bg-red-50 border-l-4 border-red-500 text-red-800 px-4 py-3 mb-4">
+        <div class="font-semibold mb-1">Build error</div>
+        <div class="text-sm">
+            <div><strong>Agent:</strong> <span id="err-agent">—</span></div>
+            <div><strong>Error code:</strong> <span id="err-code">—</span></div>
+            <div><strong>Message:</strong> <span id="err-message">—</span></div>
+            <div><strong>Attempt:</strong> <span id="err-attempt">—</span></div>
+        </div>
+    </div>
+
+    <!-- Progress card -->
+    <div class="bg-gray-50 border border-gray-200 rounded p-4 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div>
+                <div class="text-gray-500">Current step</div>
+                <div id="current-node" class="font-medium">—</div>
+            </div>
+            <div>
+                <div class="text-gray-500">Attempts</div>
+                <div id="attempts" class="font-medium">—</div>
+            </div>
+            <div>
+                <div class="text-gray-500">Elapsed</div>
+                <div id="elapsed" class="font-medium">—</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live URL (when ready) -->
+    <div id="live-url-box" class="hidden bg-green-50 border-l-4 border-green-500 text-green-900 px-4 py-3 mb-4">
+        <div class="font-semibold mb-1">App is running</div>
+        <a id="live-url" href="#" target="_blank"
+           class="text-blue-700 underline font-mono text-sm">—</a>
+    </div>
+
+    <!-- Approval panel -->
+    <div id="approval-box" class="hidden bg-yellow-50 border-l-4 border-yellow-500 text-yellow-900 px-4 py-3 mb-4">
+        <div class="font-semibold mb-2">Awaiting approval</div>
+        <p class="text-sm mb-3">
+            The build is complete and tested. Review the details below and decide.
+        </p>
+        <div class="flex items-center gap-3">
+            <button id="btn-approve"
+                    class="btn bg-green-600 hover:bg-green-700 text-white rounded px-4 py-2 font-medium">
+                Approve &amp; Deploy
+            </button>
+            <button id="btn-reject"
+                    class="btn bg-red-600 hover:bg-red-700 text-white rounded px-4 py-2 font-medium">
+                Reject
+            </button>
+            <span id="approve-hint" class="text-sm text-gray-600 hidden">Working…</span>
+        </div>
+        <p id="approval-perm-hint" class="text-xs text-gray-600 mt-2 hidden">
+            Only users with the Approval Authority role can decide.
+        </p>
+    </div>
+
+    <!-- Requirement -->
+    <div class="bg-white border border-gray-200 rounded p-4 mb-4">
+        <div class="text-gray-500 text-sm mb-1">Requirement</div>
+        <div id="requirement" class="whitespace-pre-wrap text-sm">{{ requirement }}</div>
+    </div>
+
+    <!-- Details (features, files, scores) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white border border-gray-200 rounded p-4">
+            <div class="text-gray-500 text-sm mb-2">Features</div>
+            <ul id="features-list" class="list-disc list-inside text-sm space-y-1">
+                <li class="text-gray-400">Not available yet</li>
+            </ul>
+        </div>
+        <div class="bg-white border border-gray-200 rounded p-4">
+            <div class="text-gray-500 text-sm mb-2">Generated files</div>
+            <ul id="files-list" class="list-disc list-inside text-sm space-y-1 font-mono">
+                <li class="text-gray-400">Not available yet</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="scores-box" class="hidden bg-white border border-gray-200 rounded p-4 mb-4">
+        <div class="text-gray-500 text-sm mb-2">Lighthouse scores</div>
+        <div id="scores-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div><span class="text-gray-500">Perf:</span> <span id="score-perf">—</span></div>
+            <div><span class="text-gray-500">A11y:</span> <span id="score-a11y">—</span></div>
+            <div><span class="text-gray-500">BP:</span> <span id="score-bp">—</span></div>
+            <div><span class="text-gray-500">SEO:</span> <span id="score-seo">—</span></div>
+        </div>
+    </div>
+
+    <!-- Admin-only technical details -->
+    {% if current_user and current_user.role == 'admin' %}
+    <details class="bg-gray-50 border border-gray-200 rounded p-4">
+        <summary class="cursor-pointer text-sm text-gray-700">Admin: raw status JSON</summary>
+        <pre id="raw-json" class="text-xs bg-white border border-gray-200 rounded p-3 mt-2 overflow-x-auto">—</pre>
+    </details>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const JOB_ID = {{ job_id | tojson }};
+    const CSRF_TOKEN = {{ csrf_token | tojson }};
+    const USER_ROLE = {{ (current_user.role if current_user else '') | tojson }};
+
+    const $ = (id) => document.getElementById(id);
+    let terminal = false;
+
+    function setText(id, v) { const e = $(id); if (e) e.textContent = (v === null || v === undefined) ? "—" : String(v); }
+
+    function applyStatus(s) {
+        const badge = $("status-badge");
+        badge.textContent = s.status || "unknown";
+        badge.className = "inline-block px-3 py-1 rounded text-sm " +
+            ((s.status === "done" || s.status === "deployed") ? "bg-green-100 text-green-800" :
+             (s.status === "failed" || s.status === "rolled_back") ? "bg-red-100 text-red-800" :
+             (s.status === "awaiting_approval") ? "bg-yellow-100 text-yellow-800" :
+             "bg-blue-100 text-blue-800");
+        if (["done","failed","deployed","rolled_back","rejected"].includes(s.status)) {
+            terminal = true;
+        }
+    }
+
+    function applyError(s) {
+        const box = $("error-box");
+        if (s.error && s.error.message) {
+            box.classList.remove("hidden");
+            setText("err-agent", s.error.agent);
+            setText("err-code", s.error.error_code);
+            setText("err-message", s.error.message);
+            setText("err-attempt", s.error.attempt);
+        } else {
+            box.classList.add("hidden");
+        }
+    }
+
+    function applyLive(s) {
+        const box = $("live-url-box");
+        if (s.live_url) {
+            box.classList.remove("hidden");
+            const a = $("live-url");
+            a.textContent = s.live_url;
+            a.href = s.live_url;
+        } else {
+            box.classList.add("hidden");
+        }
+    }
+
+    function applyApproval(s) {
+        const box = $("approval-box");
+        const canDecide = (USER_ROLE === "approver");
+        if (s.status === "awaiting_approval") {
+            box.classList.remove("hidden");
+            const btnA = $("btn-approve"), btnR = $("btn-reject");
+            btnA.disabled = !canDecide;
+            btnR.disabled = !canDecide;
+            $("approval-perm-hint").classList.toggle("hidden", canDecide);
+        } else {
+            box.classList.add("hidden");
+        }
+    }
+
+    function applyFeatures(s) {
+        const ul = $("features-list");
+        ul.innerHTML = "";
+        if (s.features && s.features.length) {
+            s.features.forEach(f => {
+                const li = document.createElement("li");
+                li.textContent = f;
+                ul.appendChild(li);
+            });
+        } else {
+            const li = document.createElement("li");
+            li.className = "text-gray-400";
+            li.textContent = "Not available yet";
+            ul.appendChild(li);
+        }
+    }
+
+    function applyFiles(s) {
+        const ul = $("files-list");
+        ul.innerHTML = "";
+        if (s.files && s.files.length) {
+            s.files.forEach(f => {
+                const li = document.createElement("li");
+                li.textContent = typeof f === "string" ? f : (f.path || JSON.stringify(f));
+                ul.appendChild(li);
+            });
+        } else {
+            const li = document.createElement("li");
+            li.className = "text-gray-400";
+            li.textContent = "Not available yet";
+            ul.appendChild(li);
+        }
+    }
+
+    function applyScores(s) {
+        const box = $("scores-box");
+        const sc = s.scores || s.before_scores;
+        if (sc && Object.keys(sc).length) {
+            box.classList.remove("hidden");
+            setText("score-perf", sc.performance);
+            setText("score-a11y", sc.accessibility);
+            setText("score-bp", sc["best-practices"]);
+            setText("score-seo", sc.seo);
+        } else {
+            box.classList.add("hidden");
+        }
+    }
+
+    function applyRaw(s) {
+        const pre = $("raw-json");
+        if (pre) pre.textContent = JSON.stringify(s, null, 2);
+    }
+
+    async function poll() {
+        if (terminal) return;
+        try {
+            const r = await fetch("/status/" + encodeURIComponent(JOB_ID), {
+                credentials: "same-origin"
+            });
+            if (!r.ok) return;
+            const s = await r.json();
+            applyStatus(s);
+            applyError(s);
+            applyLive(s);
+            applyApproval(s);
+            applyFeatures(s);
+            applyFiles(s);
+            applyScores(s);
+            applyRaw(s);
+            setText("current-node", s.current_node || s.status);
+            setText("attempts", (s.attempts ?? s.coder_attempts ?? "—"));
+            setText("elapsed", s.elapsed_human || s.duration_human || "—");
+        } catch (e) {
+            // network hiccup; retry on next tick
+        }
+    }
+
+    async function decide(decision) {
+        const btnA = $("btn-approve"), btnR = $("btn-reject");
+        btnA.disabled = true; btnR.disabled = true;
+        $("approve-hint").classList.remove("hidden");
+        try {
+            const r = await fetch("/approve/" + encodeURIComponent(JOB_ID), {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-Token": CSRF_TOKEN
+                },
+                body: JSON.stringify({ decision: decision })
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                alert("Decision failed: " + (j.detail || r.status));
+            } else {
+                terminal = false;
+                poll();
+            }
+        } catch (e) {
+            alert("Network error: " + e.message);
+        } finally {
+            $("approve-hint").classList.add("hidden");
+        }
+    }
+
+    $("btn-approve").addEventListener("click", () => decide("yes"));
+    $("btn-reject").addEventListener("click", () => decide("no"));
+
+    poll();
+    const timer = setInterval(() => { if (terminal) { clearInterval(timer); } else { poll(); } }, 3000);
+})();
+</script>
+{% endblock %}

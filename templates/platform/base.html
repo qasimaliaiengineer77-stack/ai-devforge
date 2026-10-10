@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}AI Software Company{% endblock %}</title>
+
+    <!-- Tailwind CSS via CDN (F8: V1 uses CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Mobile-first tweaks (Section 8): touch >= 44px, font >= 16px -->
+    <style>
+        html { font-size: 16px; }
+        .btn { min-height: 44px; }
+        input, select, textarea, button { min-height: 44px; font-size: 16px; }
+    </style>
+
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="bg-white text-gray-900 min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <a href="/" class="text-lg font-semibold">AI Software Co.</a>
+            {% if current_user %}
+            <a href="/jobs" class="text-sm hover:underline">Jobs</a>
+            <a href="/submit" class="text-sm hover:underline">New Build</a>
+            {% if current_user.role == 'admin' %}
+            <a href="/metrics" class="text-sm hover:underline">Metrics</a>
+            {% endif %}
+            {% endif %}
+        </div>
+
+        {% if current_user %}
+        <div class="flex items-center gap-3 text-sm">
+            <span class="hidden sm:inline">{{ current_user.username }} ({{ current_user.role }})</span>
+            <form method="post" action="/logout" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                <button type="submit"
+                        class="btn bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">
+                    Logout
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </nav>
+
+    <!-- Flash / alert area -->
+    {% if flash_error %}
+    <div class="bg-red-50 border-l-4 border-red-500 text-red-800 px-4 py-3 m-4" role="alert">
+        <strong>Error:</strong> {{ flash_error }}
+    </div>
+    {% endif %}
+    {% if flash_message %}
+    <div class="bg-green-50 border-l-4 border-green-500 text-green-800 px-4 py-3 m-4" role="alert">
+        {{ flash_message }}
+    </div>
+    {% endif %}
+
+    <!-- Main content -->
+    <main class="flex-1 px-4 py-6 max-w-5xl w-full mx-auto">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-100 text-gray-600 text-xs px-4 py-3 text-center">
+        AI Software Company — v0.1.0 (Step 17)
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
