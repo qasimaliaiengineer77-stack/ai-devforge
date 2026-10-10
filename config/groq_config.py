@@ -23,7 +23,7 @@ import os
 #   - openai/gpt-oss-120b remains as fallback (excellent quality).
 #   - Kimi K2 removed: not available on free tier (404 model_not_found).
 #   - openai/gpt-oss-20b dropped: real-world instruction-following issues.
-PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "qwen/qwen3.8-27b")
+PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "openai/gpt-oss-20b")
 FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
 
 # Models that accept `extra_body={"reasoning_effort": ...}` on Groq.
