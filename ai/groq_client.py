@@ -116,13 +116,18 @@ async def _call_once(
 ) -> GroqResult:
     client = _get_client()
     t0 = time.perf_counter()
-    resp = await client.chat.completions.create(
+    kwargs = dict(
         model=model,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
-                extra_body={"reasoning_effort": cfg.DEFAULT_REASONING_EFFORT},
     )
+    # Only GPT-OSS models accept reasoning_effort. Kimi K2 and others do not.
+    if cfg.supports_reasoning_effort(model):
+        kwargs["extra_body"] = {
+            "reasoning_effort": cfg.DEFAULT_REASONING_EFFORT,
+        }
+    resp = await client.chat.completions.create(**kwargs)
     latency_ms = int((time.perf_counter() - t0) * 1000)
     choice = ""
     if getattr(resp, "choices", None):

@@ -15,12 +15,27 @@ Architecture references:
 import os
 
 # --- Models ---------------------------------------------------------------
-# TEMPORARY (2026-10-10): the 120b model's daily 200k token limit was
-# exhausted during Step 17 testing. The 20b model has a 500k TPD limit,
-# so we swap primary/fallback to keep testing today. Revert after reset.
-# TODO: swap back to 120b primary once daily TPD resets.
-PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "openai/gpt-oss-20b")
+# Migration (2026-10-10): switched primary to Kimi K2 Instruct.
+# Reasons:
+#   - Kimi K2: 60 RPM, 300K TPD, top-tier coding quality, strong
+#     instruction following (SWE-bench 65.8%).
+#   - openai/gpt-oss-120b remains as fallback (excellent quality).
+#   - 20b dropped from primary after real-world instruction-following
+#     issues observed in Step 17 (missing passlib, pydantic, created_at).
+PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "moonshotai/kimi-k2-instruct")
 FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
+
+# Reasoning models accept `extra_body={"reasoning_effort": ...}` on Groq.
+# Non-reasoning models (Kimi K2, Llama) must NOT receive this param.
+REASONING_MODELS = {
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+}
+
+
+def supports_reasoning_effort(model: str) -> bool:
+    """True if `model` accepts the reasoning_effort parameter."""
+    return model in REASONING_MODELS
 
 # --- Output token caps ----------------------------------------------------
 # Free tier on Groq caps chat models at 8,000 TPM. We cap output per call
