@@ -15,21 +15,23 @@ Architecture references:
 import os
 
 # --- Models ---------------------------------------------------------------
-# Migration (2026-10-10): switched primary to Kimi K2 Instruct.
+# Migration (2026-10-10): switched primary to Qwen 3.8 27B.
 # Reasons:
-#   - Kimi K2: 60 RPM, 300K TPD, top-tier coding quality, strong
-#     instruction following (SWE-bench 65.8%).
+#   - Qwen 3.8 27B: LiveCodeBench v6 90.3%, SWE-bench Pro 61.7%.
+#     Top-tier coding quality, available on Groq free tier.
+#   - 30 RPM / 200K TPD (fresh daily quota, unlike exhausted 120b).
 #   - openai/gpt-oss-120b remains as fallback (excellent quality).
-#   - 20b dropped from primary after real-world instruction-following
-#     issues observed in Step 17 (missing passlib, pydantic, created_at).
-PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "moonshotai/kimi-k2-instruct")
+#   - Kimi K2 removed: not available on free tier (404 model_not_found).
+#   - openai/gpt-oss-20b dropped: real-world instruction-following issues.
+PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "qwen/qwen3.8-27b")
 FALLBACK_MODEL = os.getenv("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
 
-# Reasoning models accept `extra_body={"reasoning_effort": ...}` on Groq.
-# Non-reasoning models (Kimi K2, Llama) must NOT receive this param.
+# Models that accept `extra_body={"reasoning_effort": ...}` on Groq.
 REASONING_MODELS = {
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+    "qwen/qwen3.6-27b",
 }
 
 
