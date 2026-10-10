@@ -218,7 +218,7 @@ class WorkerSettings:
 
     # Section 26 config
     max_jobs = 3            # max_concurrent_builds
-    job_timeout = 900       # 15 minutes
+    job_timeout = 1800      # 30 minutes (raised from 15 after real-world timing)
     keep_result = 3600      # keep result 1 hour
     max_tries = 1           # internal retries are handled by the workflow
     allow_abort_jobs = True

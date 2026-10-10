@@ -198,25 +198,65 @@ def _strip_code_fences(s: str) -> str:
 def _parse_coder_output(raw: str) -> tuple[bool, str, dict]:
     """
     Return (ok, reason, data) where data = {"path": str, "content": str}.
-    Tries raw JSON first, then strips fences and retries.
+
+    Strategy:
+      1. Strip markdown fences.
+      2. Try raw JSON.
+      3. Try to extract the outermost { ... } substring and parse that.
+         (GPT-OSS reasoning models sometimes prepend prose like
+          "Here is the file:" before the JSON, or append notes after.)
+      4. Validate required fields.
     """
-    text = _strip_code_fences(raw or "")
+    text = _strip_code_fences(raw or "").strip()
+
+    def _validate(data: dict):
+        if not isinstance(data, dict):
+            return False, "not_object", {}
+        path = data.get("path")
+        content = data.get("content")
+        if not isinstance(path, str) or not path.strip():
+            return False, "bad_path", {}
+        if not isinstance(content, str) or not content.strip():
+            return False, "bad_content", {}
+        if len(content) > MAX_FILE_CONTENT_CHARS:
+            return False, f"content_too_large:{len(content)}", {}
+        return True, "ok", {"path": path.strip(), "content": content}
+
+    # Attempt 1: direct JSON
     try:
         data = json.loads(text)
-    except Exception as exc:
-        return False, f"not_json:{type(exc).__name__}", {}
-    if not isinstance(data, dict):
-        return False, "not_object", {}
-    path = data.get("path")
-    content = data.get("content")
-    if not isinstance(path, str) or not path.strip():
-        return False, "bad_path", {}
-    if not isinstance(content, str) or not content.strip():
-        return False, "bad_content", {}
-    if len(content) > MAX_FILE_CONTENT_CHARS:
-        return False, f"content_too_large:{len(content)}", {}
-    return True, "ok", {"path": path.strip(), "content": content}
+        return _validate(data)
+    except Exception:
+        pass
 
+    # Attempt 2: find outermost { ... } and parse that
+    first = text.find("{")
+    last = text.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        candidate = text[first:last + 1]
+        try:
+            data = json.loads(candidate)
+            ok, reason, result = _validate(data)
+            if ok:
+                return ok, reason, result
+        except Exception:
+            pass
+
+        # Attempt 3: try line-by-line to find a JSON object that parses
+        # (in case there are multiple { } blocks and one is valid)
+        for line in text.splitlines():
+            ls = line.strip()
+            if not ls.startswith("{"):
+                continue
+            try:
+                data = json.loads(ls)
+                ok, reason, result = _validate(data)
+                if ok:
+                    return ok, reason, result
+            except Exception:
+                continue
+
+    return False, "not_json:no_valid_json_found", {}
 
 # --- Check 4: syntax -----------------------------------------------------
 def _check_python_syntax(content: str) -> tuple[bool, str]:
