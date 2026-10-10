@@ -1,8 +1,8 @@
 # PROJECT STATUS — AI Software Company
 
 Last updated: 2026-10-10
-Current step: Step 16 (LangGraph Workflow) — waiting for user approval
-Last completed: Step 15 (Human Approval Gate — server-side) — COMPLETE
+Current step: Step 17 (API + Platform UI + Cleanup Job) — waiting for user approval
+Last completed: Step 16 (LangGraph Workflow) — COMPLETE
 ## Architecture
 AI Software Company — Final Production Architecture v7.0
 7 agents, 18 steps, 37 fixes. Source of truth: master prompt file.
@@ -237,4 +237,56 @@ T12 invalid decision ("maybe") -> 400 "decision must be 'yes' or 'no'"
 ### Note on test users
 - approver1 (role=approver) and user1 (role=user) created by the test.
   These remain in the SQLite DB. Fine for further testing; the platform
-  seed script only creates an admin (Step 3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+  seed script only creates an admin (Step 3).  
+
+## Step 16 — LangGraph Workflow (COMPLETE)
+
+### Files created:
+- graph/__init__.py
+- graph/state.py:
+    WorkflowState (TypedDict, total=False) — extends Section 16 AppState
+    with LangGraph routing fields: current_node, next_route,
+    coder_attempts, tester_attempts, improver_attempts, approval_status,
+    errors, started_at, finished_at.
+    Constants: MAX_CODER_ATTEMPTS=3, MAX_IMPROVER_ATTEMPTS=2.
+    Helpers: new_workflow_state, add_error, bump, is_approved, mark_finished.
+- graph/nodes.py:
+    9 async node functions, each: state -> partial dict
+        sanitize_node, pm_node, architect_node, designer_node,
+        coder_node, tester_node, improver_node, approval_node, deploy_node
+    Nodes never raise on agent failure; they record to state["errors"]
+    and set next_route (either next agent or "abort").
+    Per-node logging via observability.logger with job binding.
+- graph/workflow.py:
+    build_graph() -> CompiledStateGraph
+    START -> sanitize -> pm -> architect -> designer -> coder -> tester
+    Tester pass -> improver; Tester fail -> coder (if attempts < 3)
+    Improver ok -> approval; Improver fail with retries -> coder
+    approval -> END (deploy is a separate resume step)
+    Any *node returns next_route="abort" -> abort -> END
+    run_to_approval(requirement, job_id, user_id, trace_id) -> WorkflowState
+    resume_deploy(prev_state) -> WorkflowState (runs deploy_node directly)
+
+### Step 16 tests (7/7 PASS)
+T1 new_workflow_state defaults (0 errors, started_at set)
+T2 sanitize_node clean input -> next_route "pm"
+T3 sanitize_node injection -> next_route "abort" + error recorded
+T4 pm_node (real Groq) -> SimpleTodo, 4 features, 4 pages
+T5 architect_node (real Groq) -> 10 files, 2 tables, 9 routes
+T6 designer_node (real Groq) -> Creative palette, design_brief complete
+T7 state integrity after 4 nodes -> 0 errors, next_route "coder"
+
+Graph compile check:
+    python -c "from graph.workflow import build_graph; build_graph()"
+    -> "graph compiled OK", type=CompiledStateGraph
+
+### Git commit (Step 16)
+46303b6  Step 16: LangGraph workflow (9 nodes + conditional edges + abort path)
+
+### Notes
+- Checkpointer (SQLite) was mentioned in the plan; deferred. V1 keeps
+  state in-memory during run_to_approval and passes it explicitly to
+  resume_deploy. Adding a SQLite checkpointer is a Step 18 hardening
+  item if needed.
+- Real end-to-end flow (coder + tester + improver) will be exercised
+  in Step 17 (API) and Step 18 (final testing).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
