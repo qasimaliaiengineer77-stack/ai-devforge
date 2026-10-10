@@ -1,0 +1,182 @@
+# PROJECT STATUS — AI Software Company
+
+Last updated: 2026-10-10
+Current step: Step 14 (Deploy Agent — GitHub + Port Manager + local serve) — waiting for user approval
+Last completed: Step 13 (Improver Agent — Lighthouse) — COMPLETE
+
+## Architecture
+AI Software Company — Final Production Architecture v7.0
+7 agents, 18 steps, 37 fixes. Source of truth: master prompt file.
+
+## Steps 1-12 (COMPLETE)
+Step 1: Accounts + Tools
+Step 2: Backend setup (FastAPI)
+Step 3: Auth + Roles + seed_admin + sessions + logout + CSRF
+Step 4: AI setup (Groq, migrated to openai/gpt-oss-120b + openai/gpt-oss-20b)
+Step 5: Security layer (17/17 PASS)
+Step 6: Observability (3 PASS)
+Step 7: PM Agent (3 PASS)
+Step 8: Architect Agent (10 files, 2 tables, 9 routes PASS)
+Step 9: Designer Agent (5 palettes, WCAG AA PASS)
+Step 10: RAG + Coder Agent (10/10 files PASS, chroma Docker container)
+Step 11: Dependency Check + SECURITY UPGRADES:
+        fastapi 0.115.6 -> 0.142.2
+        starlette 0.41.3 -> 1.6.0 (5 HIGH CVEs patched)
+        jinja2 3.1.5 -> 3.1.6 (sandbox breakout CVE)
+        python-multipart 0.0.20 -> 0.0.32 (6 CVEs)
+        pip-audit==2.7.3 added
+Step 12: Tester Agent (Docker sandbox, 2-phase)
+
+## Step 13 — Improver Agent (Lighthouse) (COMPLETE)
+
+### Files created:
+- docker/lighthouse/Dockerfile
+    Node 22-slim + Chromium + Xvfb + Chromium deps
+    (kept in repo for reference; not used at runtime after pivot below)
+- sandbox/app_runner.py:
+    - build_app_image(): writes generated files to workspace and
+      `docker build` the app image (Section 37 Dockerfile).
+    - run_app_container(): runs container on ai_company_network with
+      --memory 512m, --cpus 1.0, --pids-limit 200, --cap-drop ALL,
+      --security-opt no-new-privileges, -e PYTHONUNBUFFERED=1,
+      -e DATABASE_URL=sqlite:///./app.db.
+      Host ports only if host_port given (localhost-only, F5 / Sec 37).
+    - stop_app_container / remove_app_image / cleanup_app
+    - wait_until_ready(): polls docker logs for "Uvicorn running on"
+      or "Application startup complete".
+- agents/improver_agent.py:
+    - run_improver_agent(files, job_id, user_id, trace_id, output_root,
+                         run_lighthouse=True) -> ImproverResult
+    - _run_lighthouse(url): runs Lighthouse container on shared network
+    - _extract_categories(stdout): parses JSON from stdout
+    - _scores_from_report(data): {category: 0..100}
+    - _summarize_lighthouse_issues(stdout): top-N failing audits
+    - Always cleans up app container + image in finally
+
+### CRITICAL PIVOT (Step 13)
+Custom Lighthouse Dockerfile was replaced with the community-maintained
+image `femtopixel/google-lighthouse:latest`.
+
+Reason:
+1. Custom image hit the chrome-launcher stale-devtools-port bug
+   (GitHub issue #535) — "waiting for dynamic debugging port in
+   chrome-err.log". chrome-launcher reads an obsolete port from the
+   persistent profile's stderr log instead of the freshly launched
+   browser's port.
+2. Google's own Lighthouse CI docs explicitly say Docker + Chrome
+   needs --cap-add=SYS_ADMIN, plus --shm-size=2g (Docker default
+   64MB /dev/shm causes Chrome to crash silently).
+3. femtopixel handles Chrome launch, profile rotation, and env-var
+   based CHROME_FLAGS. Verified via manual test (see below).
+
+### VERIFIED Lighthouse invocation (Step 13)
+Image     : femtopixel/google-lighthouse:latest
+Caps      : --cap-add SYS_ADMIN
+Shm       : --shm-size=2g
+Env       : CHROME_FLAGS=--headless=new --no-sandbox
+                          --disable-dev-shm-usage
+                          --disable-setuid-sandbox
+                          --disable-gpu
+Output    : --output=json  (to stdout, NOT --output-path)
+No        : custom --remote-debugging-port (image manages its own)
+Network   : ai_company_network (shared)
+URL       : http://app-{job_id}:8000 (service name, F22/F23)
+Timeout   : LIGHTHOUSE_TIMEOUT_S = 150
+
+### MINIMAL CORRECTIONS (Step 13)
+1. sandbox/app_runner.py: added -e PYTHONUNBUFFERED=1 to the app
+   container so uvicorn logs are flushed immediately and
+   wait_until_ready() can detect startup in detached mode.
+2. BUILD_TIMEOUT_S raised 180 -> 300 (slow pip on this network).
+3. Improver no longer passes --chrome-flags or --remote-debugging-*.
+
+### Step 13 test (manual verification PASS)
+Manual run against app-verify-001 (mock compliant app) with the
+verified command above:
+    categories: performance=49, accessibility=82, best-practices=74, seo=90
+    JSON output = 594 KB, valid, saveable, parseable.
+
+### Step 13 test (agent integration PASS)
+tests_step13.py with the same mock app:
+    ok: True
+    app_build: 80s (rc=0)
+    app_run: 8s, wait_until_ready OK
+    lighthouse: 54s, returncode 0
+    before_scores: {performance: 62, accessibility: 82,
+                    best-practices: 74, seo: 90}
+    after_scores:  (same as before; real improvement is Step 16)
+    issues_count: 5 (is-on-https, redirects-http, total-blocking-time,
+                     max-potential-fid, errors-in-console)
+    duration_ms: ~159000
+    cleanup: OK
+
+## Files created so far (full list)
+- PROJECT_STATUS.md, .gitignore, .env (git-ignored), requirements.txt
+- api/main.py, api/routes_auth.py
+- db/: database.py, models.py, audit.py, __init__.py
+- auth/: passwords.py, sessions.py, deps.py, __init__.py
+- scripts/: seed_admin.py, reset_admin_password.py, __init__.py
+- config/: groq_config.py, __init__.py
+- ai/: groq_client.py, state.py, __init__.py
+- security/: secret_scan.py, path_check.py, prompt_guard.py,
+             dependency_check.py, __init__.py
+- observability/: logger.py, cost_tracker.py, metrics.py, __init__.py
+- agents/: pm_agent.py, architect_agent.py, designer_agent.py,
+           coder_agent.py, tester_agent.py, improver_agent.py, __init__.py
+- rag/: chroma_client.py, embedding_fn.py, chunker.py, retriever.py, __init__.py
+- sandbox/: docker_runner.py, test_runner.py, app_runner.py, __init__.py
+- docker/lighthouse/Dockerfile (reference only)
+- ai_company.db (SQLite, git-ignored), venv/ (git-ignored)
+
+## Docker images used at runtime
+- redis (latest)                     — port 127.0.0.1:6379
+- chromadb/chroma:0.5.23             — port 127.0.0.1:8888
+- femtopixel/google-lighthouse:latest — Lighthouse runner
+- ai-company-app-{job_id}:latest      — ephemeral, removed after run
+- ai-company-sandbox-{job_id}:latest  — ephemeral, removed after run
+
+## Failed tests
+- None (in final state).
+
+## Known bugs / open decisions
+- Docker Desktop memory 1.812 GiB — may need increase later.
+- Git repo NOT yet initialized. User deferred. Flag for Step 18.
+- ai/groq_client.py line ~124 has cosmetic indent mismatch (functionally fine).
+- disk_usage_mb reports TOTAL disk usage of C: (deferred).
+- Groq TPM 8000 (openai/gpt-oss-120b).
+- Starlette deprecation warning about httpx2 (informational only).
+- Improver "issues" list is informational; no repair loop yet.
+  Real repair/regeneration happens in Step 16 (LangGraph routes back
+  to Coder if after_scores < before_scores or below threshold).
+
+## SECURITY INCIDENTS (need follow-up)
+- Admin password "78612345" appeared in chat multiple times earlier. Reset.
+- Session cookie + CSRF token values appeared in chat twice. Deleted.
+- ACTION: Never paste passwords, cookies, CSRF tokens, API keys into chat.
+
+## Next single action
+Wait for user approval to start Step 14 (Deploy Agent — GitHub push,
+Port Manager, local serve).
+
+## Backup / Git commit status
+- No git repo initialized yet.
+- No backup yet.
+- All files created locally (uncommitted).
+- Step 14 WILL require git init (GitPython push to GitHub).
+
+## Security notes
+- Redis bound to 127.0.0.1 only.
+- Chroma bound to 127.0.0.1 only.
+- .env in .gitignore.
+- bcrypt==4.0.1 pinned per F7.
+- Groq client + structlog both redact secrets before emission.
+- Session cookie: HttpOnly, SameSite=Lax.
+- CSRF token: sessions table, constant-time compare.
+- Security layer: 3-level prompt defense + path traversal block + secret scan.
+- Architect validates every file path; Designer validates WCAG AA contrast.
+- Coder validates every generated file (path + syntax + imports + secrets +
+  dangerous patterns).
+- Dependency check: PyPI + version + pip-audit CVE scan, banned pkgs blocked.
+- Tester runs in Docker sandbox with full hardening; 3-level check.
+- Improver uses SYS_ADMIN + shm=2g for Lighthouse (trusted tool, ephemeral),
+  while generated app containers keep --cap-drop ALL.

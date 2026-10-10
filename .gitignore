@@ -1,0 +1,69 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables & secrets — NEVER COMMIT
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+config/secrets/
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Generated apps (isolated)
+output/
+output/*
+
+# Backups
+backup/
+backups/
+*.bak
+*.sqlite.bak
+
+# Databases (local dev)
+*.db
+*.sqlite
+*.sqlite3
+!migrations/*.sql
+
+# Docker
+docker-compose.override.yml
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+
+# ChromaDB (local embeddings)
+chroma_db/
+chroma/
+*.chroma

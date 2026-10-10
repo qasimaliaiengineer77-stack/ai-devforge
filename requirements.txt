@@ -1,0 +1,43 @@
+# ============================================
+# AI Software Company — Python Dependencies
+# ============================================
+# Step 2 (Backend setup) ke packages.
+# Baqi packages agle steps mein add honge.
+# ============================================
+
+# ---- Web framework ----
+fastapi==0.142.2
+starlette==1.6.0
+uvicorn[standard]==0.34.0
+
+# ---- Config / env ----
+python-dotenv==1.0.1
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# ---- Auth (Step 3) ----
+sqlalchemy==2.0.36
+passlib==1.7.4
+bcrypt==4.0.1
+itsdangerous==2.2.0
+python-multipart==0.0.32
+jinja2==3.1.6
+
+# ---- AI (Step 4) ----
+langgraph==0.2.60
+langchain-core==0.3.29
+groq==0.13.1
+aiolimiter==1.2.1
+tiktoken==0.8.0
+
+# ---- Observability (Step 6) ----
+structlog==24.4.0
+
+# ---- RAG (Step 10) ----
+chromadb-client==0.5.23
+
+# ---- RAG embedding (Step 10) ----
+fastembed==0.8.0
+
+# ---- Dependency check (Step 11) ----
+pip-audit==2.7.3
