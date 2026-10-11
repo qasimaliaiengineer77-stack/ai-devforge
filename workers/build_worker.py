@@ -166,9 +166,11 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                     running.update(partial)
                 _update_job_from_state(job_id, node_name, running)
 
-        # Failure detection: if coder has failed files, save them and stop.
+        # Failure detection: files failed OR workflow hit errors.
         failed_files = running.get("failed_files") or []
-        if failed_files:
+        errors = running.get("errors") or []
+
+        if failed_files or errors:
             saved = 0
             for ff in failed_files:
                 try:
@@ -184,17 +186,36 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                     logger.warning("save_failure_failed",
                                    file_path=ff.get("path"),
                                    err=type(exc).__name__)
+
+            # Errors without file failures (Groq rate limit etc.) still
+            # need a single job-level failure row so UI shows a panel.
+            if errors and not failed_files:
+                last_err = errors[-1] or {}
+                try:
+                    failures_store.save_job_failure(
+                        job_id=job_id,
+                        error_code=last_err.get("error_code", "unknown"),
+                        error_message=last_err.get("message", ""),
+                    )
+                    saved += 1
+                except Exception as exc:
+                    logger.warning("save_job_failure_failed",
+                                   err=type(exc).__name__)
+
             jobs_store.update_job(
                 job_id,
                 status="awaiting_user_input",
-                current_node=running.get("current_node", "coder"),
+                current_node=running.get("current_node", ""),
             )
             dur = int((time.perf_counter() - t0) * 1000)
             log.info("worker_stopped_for_user_input",
-                     failed_count=len(failed_files), saved=saved,
+                     failed_count=len(failed_files),
+                     error_count=len(errors),
+                     saved=saved,
                      duration_ms=dur)
             return {"status": "awaiting_user_input", "job_id": job_id,
-                    "failed_count": len(failed_files)}
+                    "failed_count": len(failed_files),
+                    "error_count": len(errors)}
 
         # Final status determination
         next_route = running.get("next_route", "") or ""

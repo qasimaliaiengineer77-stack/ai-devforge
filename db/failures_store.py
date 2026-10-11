@@ -89,3 +89,24 @@ def resolve_failure(failure_id, resolution, manual_content=None):
                 "resolution": f.resolution, "manual_content": f.manual_content}
     finally:
         db.close()
+
+def save_job_failure(job_id, error_code, error_message):
+    """Save a job-level (non-file) failure, e.g. Groq rate limit."""
+    severity = "system"
+    confidence = 0
+    db = SessionLocal()
+    try:
+        f = JobFailure(
+            job_id=str(job_id),
+            file_path="(build)",
+            error_code=str(error_code or "")[:128],
+            error_message=str(error_message or "")[:1000],
+            severity=severity,
+            confidence=confidence,
+            ai_content="",
+        )
+        db.add(f); db.commit(); db.refresh(f)
+        return f
+    finally:
+        db.close()
+

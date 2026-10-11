@@ -38,12 +38,27 @@
   <div class="flex items-start gap-3">
     <i data-lucide="alert-triangle" class="text-red-400 mt-0.5 shrink-0" style="width:18px;height:18px;"></i>
     <div class="flex-1 min-w-0">
-      <div class="font-semibold text-red-300 mb-2">Build error</div>
-      <div class="text-xs text-[color:var(--text-muted)] grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono">
-        <div><span class="text-[color:var(--text-muted)]">agent:</span> <span id="err-agent" class="text-white">—</span></div>
-        <div><span class="text-[color:var(--text-muted)]">code:</span> <span id="err-code" class="text-white">—</span></div>
-        <div class="sm:col-span-2"><span class="text-[color:var(--text-muted)]">message:</span> <span id="err-message" class="text-white">—</span></div>
-        <div><span class="text-[color:var(--text-muted)]">attempt:</span> <span id="err-attempt" class="text-white">—</span></div>
+      <div class="font-semibold text-red-300 mb-3 flex items-center gap-2">
+        <i data-lucide="alert-octagon" style="width:16px;height:16px;"></i>
+        Build Interrupted
+      </div>
+      <div class="text-xs grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+        <div class="flex justify-between border-b border-[color:var(--border)] pb-1.5">
+          <span class="text-[color:var(--text-muted)] uppercase tracking-wide">Component</span>
+          <span id="err-agent" class="text-white font-medium">—</span>
+        </div>
+        <div class="flex justify-between border-b border-[color:var(--border)] pb-1.5">
+          <span class="text-[color:var(--text-muted)] uppercase tracking-wide">Error Code</span>
+          <span id="err-code" class="text-white font-mono text-[11px]">—</span>
+        </div>
+        <div class="flex justify-between border-b border-[color:var(--border)] pb-1.5">
+          <span class="text-[color:var(--text-muted)] uppercase tracking-wide">Attempt</span>
+          <span id="err-attempt" class="text-white font-medium">—</span>
+        </div>
+        <div class="sm:col-span-2 pt-1">
+          <div class="text-[color:var(--text-muted)] uppercase tracking-wide mb-1">Details</div>
+          <div id="err-message" class="text-white font-mono text-[11px] leading-relaxed break-words">—</div>
+        </div>
       </div>
     </div>
   </div>
@@ -54,9 +69,9 @@
   <div class="flex items-start gap-3 mb-4">
     <i data-lucide="alert-circle" class="text-orange-400 mt-0.5 shrink-0" style="width:20px;height:20px;"></i>
     <div class="flex-1">
-      <div class="font-semibold text-orange-200 mb-1">File failure - your input needed</div>
+      <div class="font-semibold text-orange-200 mb-1">Build Paused - Action Required</div>
       <p class="text-xs text-[color:var(--text-muted)]">
-        The Coder stopped. Review each failed file and decide: retry, edit manually, skip, or abort.
+        The AI build paused for input. Review the details below and choose an action.
       </p>
     </div>
   </div>
@@ -90,7 +105,7 @@
 <div class="card p-5 mb-4">
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
     <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Current step</div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Stage</div>
       <div id="current-node" class="font-mono font-semibold text-white">—</div>
     </div>
     <div>
@@ -98,7 +113,7 @@
       <div id="attempts" class="font-mono font-semibold text-white">—</div>
     </div>
     <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Elapsed</div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Duration</div>
       <div id="elapsed" class="font-mono font-semibold text-white">—</div>
     </div>
   </div>
@@ -178,7 +193,7 @@
 
 <!-- Requirement -->
 <div class="card p-5 mb-4">
-  <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-2">Requirement</div>
+  <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-2">Specification</div>
   <div id="requirement" class="text-sm text-white whitespace-pre-wrap font-mono">{{ requirement }}</div>
 </div>
 
@@ -601,10 +616,15 @@
     }
 
     function maybeAlertOnFailure(s) {
-        const failCount = (s.status === "awaiting_user_input") ? 1 : 0;
+        const isFailure = (s.status === "awaiting_user_input" ||
+                           s.status === "failed");
+        const failCount = isFailure ? 1 : 0;
         if (failCount > lastAlertedFailureCount) {
             playAlert();
-            document.title = "⚠ FAILED — AI Software Co.";
+            document.title = "Build Needs Attention — AI Software Co.";
+        }
+        if (!isFailure && lastAlertedFailureCount > 0) {
+            document.title = "AI Software Co.";
         }
         lastAlertedFailureCount = failCount;
     }
