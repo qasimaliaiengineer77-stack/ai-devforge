@@ -1,38 +1,69 @@
 ﻿{% extends "platform/base.html" %}
 
-{% block title %}Login â€” AI Software Company{% endblock %}
+{% block title %}Sign in — AI Software Company{% endblock %}
+
+{% block head_extra %}
+<style>
+  /* Hide sidebar on login page (not logged in yet) */
+  aside { display: none !important; }
+  .md\:ml-64 { margin-left: 0 !important; }
+  footer { display: none !important; }
+  nav.md\:hidden { display: none !important; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="max-w-md mx-auto mt-8">
-    <h1 class="text-2xl font-bold mb-2">Sign in</h1>
-    <p class="text-sm text-gray-600 mb-6">
-        Login required to submit builds, view jobs, and approve deployments.
-    </p>
+<div class="min-h-[80vh] flex items-center justify-center px-4">
+  <div class="w-full max-w-md">
 
-    <form method="post" action="/ui/login" class="space-y-4 bg-gray-50 p-6 rounded border border-gray-200">
-        <!-- CSRF token (Section 8) â€” generated server-side and embedded in the form -->
+    <!-- Brand -->
+    <div class="text-center mb-8">
+      <div class="logo-dot mx-auto mb-4" style="width:56px;height:56px;">
+        <i data-lucide="brain-circuit" style="width:28px;height:28px;"></i>
+      </div>
+      <h1 class="text-2xl font-bold gradient-text">AI Software Company</h1>
+      <p class="text-sm text-[color:var(--text-muted)] mt-2">
+        Sign in to build, test, and deploy AI-generated apps
+      </p>
+    </div>
+
+    <!-- Login card -->
+    <div class="card p-6">
+      <form method="post" action="/ui/login" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
         <div>
-            <label for="username" class="block text-sm font-medium mb-1">Username</label>
-            <input id="username" name="username" type="text" required autocomplete="username"
-                   class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label for="username" class="block text-sm font-medium mb-1.5 text-[color:var(--text-muted)]">
+            Username
+          </label>
+          <input id="username" name="username" type="text" required
+                 autocomplete="username" placeholder="your username"
+                 class="w-full px-3 py-2.5" />
         </div>
 
         <div>
-            <label for="password" class="block text-sm font-medium mb-1">Password</label>
-            <input id="password" name="password" type="password" required autocomplete="current-password"
-                   class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label for="password" class="block text-sm font-medium mb-1.5 text-[color:var(--text-muted)]">
+            Password
+          </label>
+          <input id="password" name="password" type="password" required
+                 autocomplete="current-password" placeholder="••••••••"
+                 class="w-full px-3 py-2.5" />
         </div>
 
-        <button type="submit"
-                class="btn w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 font-medium">
-            Sign in
+        <button type="submit" class="btn btn-primary w-full">
+          <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
+          Sign in
         </button>
-    </form>
+      </form>
 
-    <p class="text-xs text-gray-500 mt-4">
-        Signup is disabled. Users are created by an administrator.
+      <p class="text-xs text-[color:var(--text-muted)] mt-4 text-center">
+        Signup disabled. Users are created by an administrator.
+      </p>
+    </div>
+
+    <p class="text-[10px] text-[color:var(--text-muted)] mt-6 text-center">
+      Multi-Agent AI · 7 agents · 18 steps
     </p>
+  </div>
 </div>
 {% endblock %}

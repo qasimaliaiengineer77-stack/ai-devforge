@@ -120,6 +120,7 @@ async def login_page(
     elif error == "csrf":
         flash_error = "Session expired. Please try again."
     return templates.TemplateResponse(
+        request,
         "platform/login.html",
         _ctx(request, csrf_token=csrf_token, flash_error=flash_error),
     )
@@ -136,6 +137,7 @@ async def submit_page(
     s = get_session(db, session_cookie) if session_cookie else None
     csrf = s.csrf_token if s else secrets.token_urlsafe(32)
     return templates.TemplateResponse(
+        request,
         "platform/submit.html",
         _ctx(request, current_user=user, csrf_token=csrf),
     )
@@ -168,6 +170,7 @@ async def jobs_page(
         })
 
     return templates.TemplateResponse(
+        request,
         "platform/jobs.html",
         _ctx(request, current_user=user, csrf_token=csrf, jobs=rows),
     )
@@ -192,6 +195,7 @@ async def job_status_page(
     csrf = s.csrf_token if s else secrets.token_urlsafe(32)
 
     return templates.TemplateResponse(
+        request,
         "platform/job_status.html",
         _ctx(
             request,

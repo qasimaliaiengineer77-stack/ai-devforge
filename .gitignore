@@ -67,3 +67,7 @@ coverage.xml
 chroma_db/
 chroma/
 *.chroma
+
+# SQLite WAL/SHM (auto-generated)
+*.db-shm
+*.db-wal

@@ -4,70 +4,159 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}AI Software Company{% endblock %}</title>
-
-    <!-- Tailwind CSS via CDN (F8: V1 uses CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Mobile-first tweaks (Section 8): touch >= 44px, font >= 16px -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <style>
-        html { font-size: 16px; }
-        .btn { min-height: 44px; }
-        input, select, textarea, button { min-height: 44px; font-size: 16px; }
+        :root{--bg-base:#0B0F19;--bg-elev:#111827;--bg-hover:#1a2235;--border:rgba(129,140,248,.10);--border-strong:rgba(129,140,248,.25);--text:#F8FAFC;--text-muted:#94A3B8;--accent:#818CF8;--accent-2:#22D3EE;--success:#10B981;--warning:#F59E0B;--danger:#EF4444}
+        html{font-size:16px}
+        body{font-family:'Inter',system-ui,sans-serif;background:var(--bg-base);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+        h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif;letter-spacing:-.01em}
+        .font-mono{font-family:'JetBrains Mono',monospace}
+        .bg-grid{background-image:linear-gradient(rgba(129,140,248,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(129,140,248,.04) 1px,transparent 1px);background-size:44px 44px}
+        .bg-glow::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(900px 500px at 15% -10%,rgba(129,140,248,.18),transparent 60%),radial-gradient(700px 400px at 95% 10%,rgba(34,211,238,.10),transparent 60%);z-index:0}
+        .card{background:var(--bg-elev);border:1px solid var(--border);border-radius:12px}
+        .card:hover{border-color:var(--border-strong)}
+        .btn{min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:500;border-radius:8px;transition:all .15s ease}
+        input,select,textarea,button{font-size:15px}
+        input,textarea,select{background:#0d1320;border:1px solid var(--border);color:var(--text);border-radius:8px}
+        input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(129,140,248,.15)}
+        ::placeholder{color:#64748B}
+        .btn-primary{background:linear-gradient(135deg,#6366F1 0%,#22D3EE 130%);color:#0B0F19;font-weight:600;box-shadow:0 4px 14px -4px rgba(129,140,248,.5)}
+        .btn-primary:hover{box-shadow:0 6px 20px -4px rgba(129,140,248,.7);transform:translateY(-1px)}
+        .btn-ghost{background:transparent;border:1px solid var(--border-strong);color:var(--text)}
+        .btn-ghost:hover{background:var(--bg-hover)}
+        .btn-danger{background:linear-gradient(135deg,#EF4444 0%,#B91C1C 100%);color:white;font-weight:600}
+        .sidebar-link{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;color:var(--text-muted);font-size:14px;font-weight:500;transition:all .15s ease}
+        .sidebar-link:hover{background:var(--bg-hover);color:var(--text)}
+        .sidebar-link.active{background:linear-gradient(90deg,rgba(129,140,248,.15),rgba(34,211,238,.05));color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
+        .sidebar-link i{width:18px;height:18px}
+        .gradient-text{background:linear-gradient(135deg,#A5B4FC 0%,#22D3EE 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+        .logo-dot{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366F1 0%,#22D3EE 100%);box-shadow:0 0 20px -2px rgba(129,140,248,.6);display:flex;align-items:center;justify-content:center;position:relative}
+        .logo-dot::after{content:"";position:absolute;inset:6px;border-radius:4px;background:#0B0F19}
+        .logo-dot i{position:relative;z-index:1;width:16px;height:16px;color:#A5B4FC}
+        .pulse-dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success);animation:pulse 2s infinite}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+        @keyframes spinSlow{from{transform:rotate(0)}to{transform:rotate(360deg)}}.animate-spin-slow{animation:spinSlow 6s linear infinite}.fade-in{animation:fadeIn .35s ease-out}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+        ::-webkit-scrollbar{width:10px;height:10px}
+        ::-webkit-scrollbar-track{background:#0B0F19}
+        ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:4px}
+        ::-webkit-scrollbar-thumb:hover{background:#334155}
     </style>
-
     {% block head_extra %}{% endblock %}
 </head>
-<body class="bg-white text-gray-900 min-h-screen flex flex-col">
-
-    <!-- Navbar -->
-    <nav class="bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
-        <div class="flex items-center gap-4">
-            <a href="/" class="text-lg font-semibold">AI Software Co.</a>
+<body class="bg-grid bg-glow">
+    <div class="relative z-10 flex min-h-screen">
+        <aside class="hidden md:flex md:w-64 md:flex-col fixed inset-y-0 left-0 border-r border-[color:var(--border)] bg-[#0d1320]/70 backdrop-blur-xl">
+            <div class="px-4 py-5 border-b border-[color:var(--border)]">
+                <a href="/" class="flex items-center gap-3 group">
+                                        <div class="relative shrink-0">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-400 flex items-center justify-center shadow-[0_0_20px_-4px_rgba(129,140,248,0.7)] group-hover:shadow-[0_0_28px_-4px_rgba(129,140,248,0.95)] transition-shadow">
+                            <span class="text-white font-black tracking-tight" style="font-family:'Space Grotesk',sans-serif;font-size:15px;letter-spacing:-0.03em;">AI</span>
+                        </div>
+                        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0d1320] shadow-[0_0_8px_rgba(16,185,129,0.9)]"></span>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-[15px] font-bold leading-none flex items-baseline gap-1">
+                            <span class="gradient-text">AI</span>
+                            <span class="text-white">Software</span>
+                        </div>
+                        <div class="text-[10px] text-[color:var(--text-muted)] flex items-center gap-1.5 mt-1 font-mono">
+                            <span class="pulse-dot"></span>
+                            <span>by Qasim Ali</span>
+                            <span>·</span>
+                            <span>v0.1</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
             {% if current_user %}
-            <a href="/jobs" class="text-sm hover:underline">Jobs</a>
-            <a href="/submit" class="text-sm hover:underline">New Build</a>
-            {% if current_user.role == 'admin' %}
-            <a href="/metrics" class="text-sm hover:underline">Metrics</a>
+            <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                <div class="px-2 pb-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">Workspace</div>
+                <a href="/jobs" class="sidebar-link {% if request.url.path == '/jobs' %}active{% endif %}"><i data-lucide="layout-grid"></i><span>Dashboard</span></a>
+                <a href="/submit" class="sidebar-link {% if request.url.path == '/submit' %}active{% endif %}"><i data-lucide="sparkles"></i><span>New Build</span></a>
+                {% if current_user.role == 'approver' or current_user.role == 'admin' %}
+                <div class="px-2 pt-4 pb-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">Authority</div>
+                <a href="/jobs" class="sidebar-link"><i data-lucide="shield-check"></i><span>Approvals</span></a>
+                {% endif %}
+                {% if current_user.role == 'admin' %}
+                <div class="px-2 pt-4 pb-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">Admin</div>
+                <a href="/metrics" class="sidebar-link"><i data-lucide="bar-chart-3"></i><span>Metrics</span></a>
+                <a href="/ready" class="sidebar-link"><i data-lucide="activity"></i><span>Readiness</span></a>
+                {% endif %}
+            </nav>
             {% endif %}
+            {% if current_user %}
+            <div class="border-t border-[color:var(--border)] p-3">
+                <div class="rounded-xl bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-cyan-500/5 border border-[color:var(--border)] p-3">
+                    <div class="flex items-center gap-3">
+                        <div class="relative shrink-0">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-400 flex items-center justify-center text-sm font-bold text-white shadow-[0_0_16px_-2px_rgba(129,140,248,0.7)]">
+                                {{ current_user.username[:2]|upper }}
+                            </div>
+                            <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#0d1320]"></span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-semibold text-white truncate">{{ current_user.username }}</div>
+                            <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] truncate font-mono">{{ current_user.role }}</div>
+                        </div>
+                        <form method="post" action="/ui/logout" class="inline shrink-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                            <button type="submit" title="Sign out" class="w-8 h-8 rounded-lg hover:bg-red-500/10 hover:text-red-400 flex items-center justify-center text-[color:var(--text-muted)] transition">
+                                <i data-lucide="power" style="width:14px;height:14px;"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
             {% endif %}
+        </aside>
+        <div class="flex-1 md:ml-64 flex flex-col min-h-screen">
+            <header class="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[#0B0F19]/60 backdrop-blur-xl">
+                <div class="flex items-center justify-between px-4 md:px-8 py-3">
+                    <a href="/" class="flex md:hidden items-center gap-2">
+                        <div class="logo-dot" style="width:26px;height:26px;"><i data-lucide="brain-circuit" style="width:14px;height:14px;"></i></div>
+                        <span class="font-semibold text-sm">AI Co.</span>
+                    </a>
+                    <div class="hidden md:block text-sm text-[color:var(--text-muted)]">{% block breadcrumb %}{% endblock %}</div>
+                    <div class="flex items-center gap-2">
+                        {% block top_actions %}{% endblock %}
+                        <span class="hidden sm:inline-flex items-center gap-2 text-xs text-[color:var(--text-muted)] px-3 py-1 rounded-full border border-[color:var(--border)]"><span class="pulse-dot"></span> System ready</span>
+                    </div>
+                </div>
+            </header>
+            {% if flash_error %}
+            <div class="mx-4 md:mx-8 mt-4 fade-in"><div class="flex items-start gap-3 p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200"><i data-lucide="alert-triangle" style="width:18px;height:18px;" class="mt-0.5 shrink-0"></i><div class="text-sm">{{ flash_error }}</div></div></div>
+            {% endif %}
+            {% if flash_message %}
+            <div class="mx-4 md:mx-8 mt-4 fade-in"><div class="flex items-start gap-3 p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200"><i data-lucide="check-circle-2" style="width:18px;height:18px;" class="mt-0.5 shrink-0"></i><div class="text-sm">{{ flash_message }}</div></div></div>
+            {% endif %}
+            <main class="flex-1 px-4 md:px-8 py-6 pb-24 md:pb-8 fade-in">{% block content %}{% endblock %}</main>
+            <footer class="hidden md:block border-t border-[color:var(--border)] px-8 py-4 text-xs text-[color:var(--text-muted)]">
+                <div class="flex items-center justify-between">
+                    <div>AI Software Company · v0.1.0</div>
+                    <div class="flex items-center gap-2"><i data-lucide="cpu" style="width:12px;height:12px;"></i><span>Multi-Agent System · 7 agents</span></div>
+                </div>
+            </footer>
         </div>
-
-        {% if current_user %}
-        <div class="flex items-center gap-3 text-sm">
-            <span class="hidden sm:inline">{{ current_user.username }} ({{ current_user.role }})</span>
-            <form method="post" action="/ui/logout" class="inline">
+    </div>
+    {% if current_user %}
+    <nav class="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[color:var(--border)] bg-[#0d1320]/90 backdrop-blur-xl">
+        <div class="grid grid-cols-4 py-2">
+            <a href="/jobs" class="flex flex-col items-center gap-1 py-2 text-[10px] {% if request.url.path == '/jobs' %}text-[color:var(--accent)]{% else %}text-[color:var(--text-muted)]{% endif %}"><i data-lucide="layout-grid" style="width:20px;height:20px;"></i><span>Jobs</span></a>
+            <a href="/submit" class="flex flex-col items-center gap-1 py-2 text-[10px] {% if request.url.path == '/submit' %}text-[color:var(--accent)]{% else %}text-[color:var(--text-muted)]{% endif %}"><i data-lucide="sparkles" style="width:20px;height:20px;"></i><span>Build</span></a>
+            <a href="/jobs" class="flex flex-col items-center gap-1 py-2 text-[10px] text-[color:var(--text-muted)]"><i data-lucide="shield-check" style="width:20px;height:20px;"></i><span>Approve</span></a>
+            <form method="post" action="/ui/logout" class="flex flex-col items-center gap-1 py-2 text-[10px] text-[color:var(--text-muted)]">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-                <button type="submit"
-                        class="btn bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">
-                    Logout
-                </button>
+                <button type="submit" class="flex flex-col items-center gap-1"><i data-lucide="log-out" style="width:20px;height:20px;"></i><span>Exit</span></button>
             </form>
         </div>
-        {% endif %}
     </nav>
-
-    <!-- Flash / alert area -->
-    {% if flash_error %}
-    <div class="bg-red-50 border-l-4 border-red-500 text-red-800 px-4 py-3 m-4" role="alert">
-        <strong>Error:</strong> {{ flash_error }}
-    </div>
     {% endif %}
-    {% if flash_message %}
-    <div class="bg-green-50 border-l-4 border-green-500 text-green-800 px-4 py-3 m-4" role="alert">
-        {{ flash_message }}
-    </div>
-    {% endif %}
-
-    <!-- Main content -->
-    <main class="flex-1 px-4 py-6 max-w-5xl w-full mx-auto">
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-gray-100 text-gray-600 text-xs px-4 py-3 text-center">
-        AI Software Company â€” v0.1.0 (Step 17)
-    </footer>
-
+    <script>if(window.lucide){lucide.createIcons();}</script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

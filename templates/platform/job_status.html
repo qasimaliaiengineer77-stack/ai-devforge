@@ -2,120 +2,174 @@
 
 {% block title %}Job {{ job_id }} — AI Software Company{% endblock %}
 
+{% block breadcrumb %}
+  <span class="text-[color:var(--text-muted)]">Workspace</span>
+  <span class="mx-2 text-[color:var(--text-muted)]">/</span>
+  <a href="/jobs" class="text-[color:var(--text-muted)] hover:text-white">Jobs</a>
+  <span class="mx-2 text-[color:var(--text-muted)]">/</span>
+  <span class="text-white font-mono text-xs">{{ job_id }}</span>
+{% endblock %}
+
+{% block top_actions %}
+  <a href="/jobs" class="btn btn-ghost text-xs px-3 py-1.5">
+    <i data-lucide="arrow-left" style="width:14px;height:14px;"></i>
+    All jobs
+  </a>
+{% endblock %}
+
 {% block content %}
-<div class="max-w-4xl mx-auto">
-    <div class="flex items-center justify-between mb-4">
-        <div>
-            <h1 class="text-2xl font-bold">Job</h1>
-            <p class="text-xs font-mono text-gray-500">{{ job_id }}</p>
-        </div>
-        <div class="flex items-center gap-3">
-            <span id="status-badge"
-                  class="inline-block px-3 py-1 rounded text-sm bg-gray-100 text-gray-700">
-                {{ status }}
-            </span>
-            <a href="/jobs" class="text-sm text-blue-600 hover:underline">← All jobs</a>
-        </div>
-    </div>
 
-    <!-- Error box (F19) -->
-    <div id="error-box" class="hidden bg-red-50 border-l-4 border-red-500 text-red-800 px-4 py-3 mb-4">
-        <div class="font-semibold mb-1">Build error</div>
-        <div class="text-sm">
-            <div><strong>Agent:</strong> <span id="err-agent">—</span></div>
-            <div><strong>Error code:</strong> <span id="err-code">—</span></div>
-            <div><strong>Message:</strong> <span id="err-message">—</span></div>
-            <div><strong>Attempt:</strong> <span id="err-attempt">—</span></div>
-        </div>
-    </div>
-
-    <!-- Progress card -->
-    <div class="bg-gray-50 border border-gray-200 rounded p-4 mb-4">
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-            <div>
-                <div class="text-gray-500">Current step</div>
-                <div id="current-node" class="font-medium">—</div>
-            </div>
-            <div>
-                <div class="text-gray-500">Attempts</div>
-                <div id="attempts" class="font-medium">—</div>
-            </div>
-            <div>
-                <div class="text-gray-500">Elapsed</div>
-                <div id="elapsed" class="font-medium">—</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Live URL (when ready) -->
-    <div id="live-url-box" class="hidden bg-green-50 border-l-4 border-green-500 text-green-900 px-4 py-3 mb-4">
-        <div class="font-semibold mb-1">App is running</div>
-        <a id="live-url" href="#" target="_blank"
-           class="text-blue-700 underline font-mono text-sm">—</a>
-    </div>
-
-    <!-- Approval panel -->
-    <div id="approval-box" class="hidden bg-yellow-50 border-l-4 border-yellow-500 text-yellow-900 px-4 py-3 mb-4">
-        <div class="font-semibold mb-2">Awaiting approval</div>
-        <p class="text-sm mb-3">
-            The build is complete and tested. Review the details below and decide.
-        </p>
-        <div class="flex items-center gap-3">
-            <button id="btn-approve"
-                    class="btn bg-green-600 hover:bg-green-700 text-white rounded px-4 py-2 font-medium">
-                Approve &amp; Deploy
-            </button>
-            <button id="btn-reject"
-                    class="btn bg-red-600 hover:bg-red-700 text-white rounded px-4 py-2 font-medium">
-                Reject
-            </button>
-            <span id="approve-hint" class="text-sm text-gray-600 hidden">Working…</span>
-        </div>
-        <p id="approval-perm-hint" class="text-xs text-gray-600 mt-2 hidden">
-            Only users with the Approval Authority role can decide.
-        </p>
-    </div>
-
-    <!-- Requirement -->
-    <div class="bg-white border border-gray-200 rounded p-4 mb-4">
-        <div class="text-gray-500 text-sm mb-1">Requirement</div>
-        <div id="requirement" class="whitespace-pre-wrap text-sm">{{ requirement }}</div>
-    </div>
-
-    <!-- Details (features, files, scores) -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div class="bg-white border border-gray-200 rounded p-4">
-            <div class="text-gray-500 text-sm mb-2">Features</div>
-            <ul id="features-list" class="list-disc list-inside text-sm space-y-1">
-                <li class="text-gray-400">Not available yet</li>
-            </ul>
-        </div>
-        <div class="bg-white border border-gray-200 rounded p-4">
-            <div class="text-gray-500 text-sm mb-2">Generated files</div>
-            <ul id="files-list" class="list-disc list-inside text-sm space-y-1 font-mono">
-                <li class="text-gray-400">Not available yet</li>
-            </ul>
-        </div>
-    </div>
-
-    <div id="scores-box" class="hidden bg-white border border-gray-200 rounded p-4 mb-4">
-        <div class="text-gray-500 text-sm mb-2">Lighthouse scores</div>
-        <div id="scores-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            <div><span class="text-gray-500">Perf:</span> <span id="score-perf">—</span></div>
-            <div><span class="text-gray-500">A11y:</span> <span id="score-a11y">—</span></div>
-            <div><span class="text-gray-500">BP:</span> <span id="score-bp">—</span></div>
-            <div><span class="text-gray-500">SEO:</span> <span id="score-seo">—</span></div>
-        </div>
-    </div>
-
-    <!-- Admin-only technical details -->
-    {% if current_user and current_user.role == 'admin' %}
-    <details class="bg-gray-50 border border-gray-200 rounded p-4">
-        <summary class="cursor-pointer text-sm text-gray-700">Admin: raw status JSON</summary>
-        <pre id="raw-json" class="text-xs bg-white border border-gray-200 rounded p-3 mt-2 overflow-x-auto">—</pre>
-    </details>
-    {% endif %}
+<!-- Header row -->
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+  <div class="min-w-0">
+    <h1 class="text-2xl font-bold">Job</h1>
+    <p class="text-xs font-mono text-[color:var(--text-muted)] mt-1">{{ job_id }}</p>
+  </div>
+  <span id="status-badge"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border
+               bg-slate-500/10 text-slate-300 border-slate-500/20">
+    <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+    <span id="status-text">{{ status }}</span>
+  </span>
 </div>
+
+<!-- Error box (F19) -->
+<div id="error-box" class="hidden card p-4 mb-4 border-red-500/30 bg-red-500/5">
+  <div class="flex items-start gap-3">
+    <i data-lucide="alert-triangle" class="text-red-400 mt-0.5 shrink-0" style="width:18px;height:18px;"></i>
+    <div class="flex-1 min-w-0">
+      <div class="font-semibold text-red-300 mb-2">Build error</div>
+      <div class="text-xs text-[color:var(--text-muted)] grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono">
+        <div><span class="text-[color:var(--text-muted)]">agent:</span> <span id="err-agent" class="text-white">—</span></div>
+        <div><span class="text-[color:var(--text-muted)]">code:</span> <span id="err-code" class="text-white">—</span></div>
+        <div class="sm:col-span-2"><span class="text-[color:var(--text-muted)]">message:</span> <span id="err-message" class="text-white">—</span></div>
+        <div><span class="text-[color:var(--text-muted)]">attempt:</span> <span id="err-attempt" class="text-white">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Progress card -->
+<div class="card p-5 mb-4">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Current step</div>
+      <div id="current-node" class="font-mono font-semibold text-white">—</div>
+    </div>
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Attempts</div>
+      <div id="attempts" class="font-mono font-semibold text-white">—</div>
+    </div>
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Elapsed</div>
+      <div id="elapsed" class="font-mono font-semibold text-white">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Live URL -->
+<div id="live-url-box" class="hidden card p-4 mb-4 border-emerald-500/30 bg-emerald-500/5">
+  <div class="flex items-center gap-3">
+    <i data-lucide="external-link" class="text-emerald-400 shrink-0" style="width:16px;height:16px;"></i>
+    <div class="flex-1 min-w-0">
+      <div class="text-xs text-emerald-300 font-medium mb-1">App is running</div>
+      <a id="live-url" href="#" target="_blank"
+         class="text-sm font-mono text-emerald-200 hover:text-white underline break-all">—</a>
+    </div>
+  </div>
+</div>
+
+<!-- Approval panel -->
+<div id="approval-box" class="hidden card p-5 mb-4 border-yellow-500/30 bg-yellow-500/5">
+  <div class="flex items-start gap-3 mb-4">
+    <i data-lucide="shield-check" class="text-yellow-400 mt-0.5 shrink-0" style="width:18px;height:18px;"></i>
+    <div>
+      <div class="font-semibold text-yellow-200 mb-1">Awaiting approval</div>
+      <p class="text-xs text-[color:var(--text-muted)]">
+        The build is complete and tested. Review the details below and decide.
+      </p>
+    </div>
+  </div>
+  <div class="flex items-center gap-3 flex-wrap">
+    <button id="btn-approve" class="btn btn-primary px-5 disabled:opacity-40 disabled:cursor-not-allowed">
+      <i data-lucide="check" style="width:16px;height:16px;"></i>
+      Approve &amp; Deploy
+    </button>
+    <button id="btn-reject" class="btn btn-danger px-5 disabled:opacity-40 disabled:cursor-not-allowed">
+      <i data-lucide="x" style="width:16px;height:16px;"></i>
+      Reject
+    </button>
+    <span id="approve-hint" class="text-xs text-[color:var(--text-muted)] hidden items-center gap-2">
+      <span class="pulse-dot"></span> Working…
+    </span>
+  </div>
+  <p id="approval-perm-hint" class="text-[11px] text-[color:var(--text-muted)] mt-3 hidden">
+    Only users with the Approval Authority role can decide.
+  </p>
+</div>
+
+<!-- Requirement -->
+<div class="card p-5 mb-4">
+  <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-2">Requirement</div>
+  <div id="requirement" class="text-sm text-white whitespace-pre-wrap font-mono">{{ requirement }}</div>
+</div>
+
+<!-- Details grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+  <div class="card p-5">
+    <div class="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-3">
+      <i data-lucide="list-checks" style="width:12px;height:12px;"></i>
+      Features
+    </div>
+    <ul id="features-list" class="space-y-2 text-sm text-white">
+      <li class="text-[color:var(--text-muted)] italic">Not available yet</li>
+    </ul>
+  </div>
+  <div class="card p-5">
+    <div class="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-3">
+      <i data-lucide="file-code" style="width:12px;height:12px;"></i>
+      Generated files
+    </div>
+    <ul id="files-list" class="space-y-1 text-xs text-white font-mono">
+      <li class="text-[color:var(--text-muted)] italic">Not available yet</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Lighthouse scores -->
+<div id="scores-box" class="hidden card p-5 mb-4">
+  <div class="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-3">
+    <i data-lucide="gauge" style="width:12px;height:12px;"></i>
+    Lighthouse scores
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="text-center">
+      <div class="text-2xl font-bold font-mono text-white" id="score-perf">—</div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mt-1">Perf</div>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold font-mono text-white" id="score-a11y">—</div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mt-1">A11y</div>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold font-mono text-white" id="score-bp">—</div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mt-1">Best Pr.</div>
+    </div>
+    <div class="text-center">
+      <div class="text-2xl font-bold font-mono text-white" id="score-seo">—</div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mt-1">SEO</div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin raw JSON -->
+{% if current_user and current_user.role == 'admin' %}
+<details class="card p-4">
+  <summary class="cursor-pointer text-xs text-[color:var(--text-muted)] hover:text-white">Admin: raw status JSON</summary>
+  <pre id="raw-json" class="text-[10px] bg-[#0d1320] border border-[color:var(--border)] rounded p-3 mt-3 overflow-x-auto text-[color:var(--text-muted)]">—</pre>
+</details>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -128,16 +182,31 @@
     const $ = (id) => document.getElementById(id);
     let terminal = false;
 
-    function setText(id, v) { const e = $(id); if (e) e.textContent = (v === null || v === undefined) ? "—" : String(v); }
+    function setText(id, v) {
+        const e = $(id);
+        if (e) e.textContent = (v === null || v === undefined || v === '') ? '—' : String(v);
+    }
 
     function applyStatus(s) {
         const badge = $("status-badge");
-        badge.textContent = s.status || "unknown";
-        badge.className = "inline-block px-3 py-1 rounded text-sm " +
-            ((s.status === "done" || s.status === "deployed") ? "bg-green-100 text-green-800" :
-             (s.status === "failed" || s.status === "rolled_back") ? "bg-red-100 text-red-800" :
-             (s.status === "awaiting_approval") ? "bg-yellow-100 text-yellow-800" :
-             "bg-blue-100 text-blue-800");
+        const text = $("status-text");
+        text.textContent = s.status || "unknown";
+
+        const map = {
+            "done": "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+            "deployed": "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+            "failed": "bg-red-500/10 text-red-300 border-red-500/20",
+            "rolled_back": "bg-red-500/10 text-red-300 border-red-500/20",
+            "rejected": "bg-red-500/10 text-red-300 border-red-500/20",
+            "awaiting_approval": "bg-yellow-500/10 text-yellow-300 border-yellow-500/20",
+            "building": "bg-indigo-500/10 text-indigo-300 border-indigo-500/20",
+            "testing": "bg-cyan-500/10 text-cyan-300 border-cyan-500/20",
+            "improving": "bg-purple-500/10 text-purple-300 border-purple-500/20",
+            "deploying": "bg-blue-500/10 text-blue-300 border-blue-500/20",
+        };
+        badge.className = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border " +
+            (map[s.status] || "bg-slate-500/10 text-slate-300 border-slate-500/20");
+
         if (["done","failed","deployed","rolled_back","rejected"].includes(s.status)) {
             terminal = true;
         }
@@ -145,7 +214,7 @@
 
     function applyError(s) {
         const box = $("error-box");
-        if (s.error && s.error.message) {
+        if (s.error && (s.error.message || s.error.error_code)) {
             box.classList.remove("hidden");
             setText("err-agent", s.error.agent);
             setText("err-code", s.error.error_code);
@@ -188,14 +257,12 @@
         if (s.features && s.features.length) {
             s.features.forEach(f => {
                 const li = document.createElement("li");
-                li.textContent = f;
+                li.className = "flex items-start gap-2";
+                li.innerHTML = '<span class="text-indigo-400 mt-0.5">›</span><span>' + f + '</span>';
                 ul.appendChild(li);
             });
         } else {
-            const li = document.createElement("li");
-            li.className = "text-gray-400";
-            li.textContent = "Not available yet";
-            ul.appendChild(li);
+            ul.innerHTML = '<li class="text-[color:var(--text-muted)] italic">Not available yet</li>';
         }
     }
 
@@ -205,14 +272,13 @@
         if (s.files && s.files.length) {
             s.files.forEach(f => {
                 const li = document.createElement("li");
-                li.textContent = typeof f === "string" ? f : (f.path || JSON.stringify(f));
+                const p = typeof f === "string" ? f : (f.path || JSON.stringify(f));
+                const b = (typeof f === "object" && f.bytes) ? (" · " + f.bytes + " B") : "";
+                li.innerHTML = '<span class="text-emerald-400">▸</span> <span>' + p + '</span><span class="text-[color:var(--text-muted)]">' + b + '</span>';
                 ul.appendChild(li);
             });
         } else {
-            const li = document.createElement("li");
-            li.className = "text-gray-400";
-            li.textContent = "Not available yet";
-            ul.appendChild(li);
+            ul.innerHTML = '<li class="text-[color:var(--text-muted)] italic">Not available yet</li>';
         }
     }
 
@@ -251,18 +317,20 @@
             applyFiles(s);
             applyScores(s);
             applyRaw(s);
-            setText("current-node", s.current_node || s.status);
-            setText("attempts", (s.attempts ?? s.coder_attempts ?? "—"));
-            setText("elapsed", s.elapsed_human || s.duration_human || "—");
-        } catch (e) {
-            // network hiccup; retry on next tick
-        }
+            setText("current-node", s.current_node);
+            setText("attempts", s.attempts ?? s.coder_attempts);
+            if (s.created_at && s.updated_at) {
+                const dt = (new Date(s.updated_at) - new Date(s.created_at)) / 1000;
+                if (dt > 0) setText("elapsed", Math.round(dt) + "s");
+            }
+        } catch (e) { /* retry next tick */ }
     }
 
     async function decide(decision) {
         const btnA = $("btn-approve"), btnR = $("btn-reject");
         btnA.disabled = true; btnR.disabled = true;
         $("approve-hint").classList.remove("hidden");
+        $("approve-hint").classList.add("inline-flex");
         try {
             const r = await fetch("/approve/" + encodeURIComponent(JOB_ID), {
                 method: "POST",
@@ -284,6 +352,7 @@
             alert("Network error: " + e.message);
         } finally {
             $("approve-hint").classList.add("hidden");
+            $("approve-hint").classList.remove("inline-flex");
         }
     }
 
