@@ -46,7 +46,7 @@ from security.secret_scan import contains_secret
 
 logger = get_logger("agents.coder")
 
-MAX_REPAIR_ATTEMPTS = 3
+MAX_REPAIR_ATTEMPTS = 1
 MAX_FILE_CONTENT_CHARS = 30000
 
 # --- Section 15 generation order ----------------------------------------
@@ -505,6 +505,7 @@ async def _generate_one(
 
     warnings: list[str] = []
     last_reason = "unknown"
+    last_attempt_content: Optional[str] = None
 
     for attempt in range(1, MAX_REPAIR_ATTEMPTS + 1):
         try:
@@ -530,12 +531,14 @@ async def _generate_one(
 
         ok, reason, data = _parse_coder_output(result.content)
         if not ok:
+            last_attempt_content = result.content  # preserve raw
             last_reason = reason
             log.warning("coder_parse_failed", path=target_path, reason=reason,
                         attempt=attempt)
         else:
             # Force the path to be the one we asked for.
             content = data["content"]
+            last_attempt_content = content  # preserve even if validation fails
             vok, vreason, vmeta = _validate_file(target_path, content)
             if vok:
                 warnings.extend(vmeta.get("warnings", []))
@@ -553,7 +556,8 @@ async def _generate_one(
         ]
 
     log.error("coder_file_failed", path=target_path, reason=last_reason)
-    return None, rag_tokens, warnings
+    # Preserve the last AI content even on failure (for manual edit UI)
+    return last_attempt_content, rag_tokens, warnings, last_reason
 
 
 # --- Main entry point ---------------------------------------------------

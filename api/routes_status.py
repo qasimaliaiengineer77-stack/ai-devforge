@@ -13,6 +13,8 @@ Endpoints:
 
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 import os
 from pathlib import Path
 
@@ -27,7 +29,8 @@ from auth.deps import require_user
 from db.database import SessionLocal, get_db
 from db.jobs_store import get_job, job_to_status_dict
 from db.models import User
-from workers.queue import ping as redis_ping
+from workers.queue import enqueue_build, ping as redis_ping
+from db import failures_store
 
 router = APIRouter(tags=["status"])
 
@@ -135,3 +138,69 @@ async def ready():
     if not critical_ok:
         return JSONResponse(status_code=503, content=payload)
     return payload
+
+
+# ============================================================
+# POST /resolve-failure/{job_id}  -- resolve a failed file
+# ============================================================
+class ResolveFailureBody(BaseModel):
+    failure_id: int
+    action: str  # retry | skip | abort | manual
+    manual_content: str | None = None
+
+
+@router.post("/resolve-failure/{job_id}")
+async def resolve_failure_endpoint(
+    job_id: str,
+    body: ResolveFailureBody,
+    user: User = Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """
+    User resolves a file failure.
+    action:
+      - retry : re-enqueue the job (all files regenerate for now)
+      - skip  : mark failure as skipped, re-enqueue
+      - manual: save manual content, re-enqueue
+      - abort : mark job failed, stop
+    """
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if user.role != "admin" and job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
+
+    a = (body.action or "").strip().lower()
+    if a not in ("retry", "skip", "abort", "manual"):
+        raise HTTPException(status_code=400, detail="invalid action")
+
+    if a == "abort":
+        failures_store.resolve_failure(body.failure_id, "abort")
+        from db.jobs_store import update_job
+        update_job(job_id, status="failed",
+                   error_message="user aborted on failure")
+        return {"status": "aborted", "job_id": job_id}
+
+    # For retry/skip/manual: resolve failure then re-enqueue
+    resolved = failures_store.resolve_failure(
+        body.failure_id,
+        a,
+        manual_content=body.manual_content,
+    )
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="failure not found")
+
+    # Mark job as building again and re-enqueue
+    from db.jobs_store import update_job
+    update_job(job_id, status="building", current_node="resume",
+               error_agent=None, error_code=None,
+               error_message=None, error_attempt=None)
+    try:
+        await enqueue_build(job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"enqueue_failed:{type(exc).__name__}")
+
+    return {"status": "resumed", "job_id": job_id,
+            "action": a, "failure_id": body.failure_id}
+

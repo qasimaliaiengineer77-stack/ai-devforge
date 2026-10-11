@@ -36,6 +36,7 @@ from arq.connections import RedisSettings
 from dotenv import load_dotenv
 
 from db import jobs_store
+from db import failures_store
 from graph.state import new_workflow_state
 from graph.workflow import build_graph
 from observability.logger import bind_job, get_logger
@@ -164,6 +165,36 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                 if partial:
                     running.update(partial)
                 _update_job_from_state(job_id, node_name, running)
+
+        # Failure detection: if coder has failed files, save them and stop.
+        failed_files = running.get("failed_files") or []
+        if failed_files:
+            saved = 0
+            for ff in failed_files:
+                try:
+                    failures_store.save_failure(
+                        job_id=job_id,
+                        file_path=ff.get("path", ""),
+                        error_code=ff.get("reason", "unknown"),
+                        error_message=ff.get("reason", ""),
+                        ai_content=ff.get("content", "") or "",
+                    )
+                    saved += 1
+                except Exception as exc:
+                    logger.warning("save_failure_failed",
+                                   file_path=ff.get("path"),
+                                   err=type(exc).__name__)
+            jobs_store.update_job(
+                job_id,
+                status="awaiting_user_input",
+                current_node=running.get("current_node", "coder"),
+            )
+            dur = int((time.perf_counter() - t0) * 1000)
+            log.info("worker_stopped_for_user_input",
+                     failed_count=len(failed_files), saved=saved,
+                     duration_ms=dur)
+            return {"status": "awaiting_user_input", "job_id": job_id,
+                    "failed_count": len(failed_files)}
 
         # Final status determination
         next_route = running.get("next_route", "") or ""

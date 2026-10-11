@@ -172,3 +172,26 @@ class Job(Base):
 
     def __repr__(self) -> str:
         return f"<Job job_id={self.job_id!r} status={self.status!r}>"
+
+class JobFailure(Base):
+    """One row per failed file. User resolves via UI."""
+    __tablename__ = "job_failures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    file_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    severity: Mapped[str] = mapped_column(String(16), default="unknown")
+    confidence: Mapped[int] = mapped_column(Integer, default=0)
+    ai_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved: Mapped[int] = mapped_column(Integer, default=0)
+    resolution: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    manual_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
