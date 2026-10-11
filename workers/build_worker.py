@@ -29,6 +29,7 @@ Run:
 from __future__ import annotations
 
 import os
+import sqlite3
 import time
 from typing import Any
 
@@ -39,6 +40,7 @@ from db import jobs_store
 from db import failures_store
 from graph.state import new_workflow_state
 from graph.workflow import build_graph
+from langgraph.checkpoint.sqlite import SqliteSaver
 from observability.logger import bind_job, get_logger
 from workers.queue import _redis_settings_from_url
 
@@ -153,14 +155,20 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
             trace_id=trace_id,
         )
 
-        graph = build_graph()
+        # Create SQLite checkpointer (persists state across process restarts)
+        conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+        checkpointer = SqliteSaver(conn)
+        checkpointer.setup()
+
+        graph = build_graph(checkpointer=checkpointer)
+        config = {"configurable": {"thread_id": job_id}}
 
         # Running state: we merge each node's partial update here and use
         # it to update the jobs table. `astream(stream_mode="updates")`
         # yields {node_name: partial_dict} per node completion.
         running: dict[str, Any] = dict(initial)
 
-        async for event in graph.astream(initial, stream_mode="updates"):
+        async for event in graph.astream(initial, config, stream_mode="updates"):
             for node_name, partial in event.items():
                 if partial:
                     running.update(partial)

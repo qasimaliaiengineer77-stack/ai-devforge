@@ -134,9 +134,13 @@ def _abort_node(state: WorkflowState) -> dict:
 
 
 # --- Graph builder -------------------------------------------------------
-def build_graph() -> Any:
+def build_graph(checkpointer=None) -> Any:
     """
     Build and compile the LangGraph StateGraph.
+
+    Args:
+        checkpointer: Optional LangGraph checkpointer for state persistence.
+                      Use SqliteSaver for local dev, PostgresSaver for prod.
 
     Returns the compiled graph. It is safe to reuse across jobs.
     """
@@ -186,7 +190,7 @@ def build_graph() -> Any:
     # Abort reaches END.
     g.add_edge("abort", END)
 
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)
 
 
 # --- Convenience runners -------------------------------------------------
@@ -252,3 +256,49 @@ async def resume_deploy(prev_state: WorkflowState) -> WorkflowState:
         port=merged.get("port"),
     )
     return merged
+
+
+async def resume_workflow(job_id: str, resume_value: dict) -> WorkflowState:
+    """
+    Resume a paused workflow from the last checkpoint.
+
+    Call this after the user resolves a failure via /resolve-failure.
+    The checkpointer loads the exact state where the workflow stopped.
+    """
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    # Create checkpointer (same DB as worker)
+    conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    checkpointer.setup()
+
+    log = bind_job(logger, job_id=job_id)
+    log.info("workflow_resume_start", job_id=job_id)
+
+    graph = build_graph(checkpointer=checkpointer)
+    config = {"configurable": {"thread_id": job_id}}
+
+    try:
+        # Get current state
+        state = graph.get_state(config)
+        log.info("resume_state_found", next_steps=state.next)
+
+        # Resume by passing the updated state
+        # We update the state with the resume_value (which may include
+        # corrected code files, deleted files, etc.)
+        graph.update_state(config, resume_value)
+
+        # Continue execution from where it left off
+        result = await graph.ainvoke(None, config)
+        log.info("workflow_resume_done", status=result.get("status"))
+        return result
+    except Exception as exc:
+        log.error("workflow_resume_failed", err=str(exc))
+        raise
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+

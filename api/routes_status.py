@@ -190,19 +190,49 @@ async def resolve_failure_endpoint(
     if resolved is None:
         raise HTTPException(status_code=404, detail="failure not found")
 
-    # Mark job as building again and re-enqueue
+    # Mark job as building again
     from db.jobs_store import update_job
     update_job(job_id, status="building", current_node="resume",
                error_agent=None, error_code=None,
                error_message=None, error_attempt=None)
-    try:
-        await enqueue_build(job_id)
-    except Exception as exc:
-        raise HTTPException(status_code=503,
-                            detail=f"enqueue_failed:{type(exc).__name__}")
 
-    return {"status": "resumed", "job_id": job_id,
-            "action": a, "failure_id": body.failure_id}
+    # For "manual": build state update with corrected content
+    resume_value: dict = {}
+    if a == "manual" and body.manual_content:
+        # Find the failed file path and update it in code_files
+        from db.jobs_store import get_job as _get_job
+        job_row = _get_job(job_id)
+        if job_row:
+            # Load existing code_files (if any)
+            from db.jobs_store import decode_files
+            existing = decode_files(job_row) or []
+            # Remove the old file and add the new one
+            merged = [f for f in existing if f.get("path") != resolved["file_path"]]
+            merged.append({"path": resolved["file_path"],
+                           "content": body.manual_content})
+            resume_value["code_files"] = merged
+            resume_value["failed_files"] = []  # clear failures
+
+    # Try resume via checkpointer (preferred - continues from last node)
+    try:
+        from graph.workflow import resume_workflow
+        state = await resume_workflow(job_id, resume_value)
+        return {"status": "resumed", "job_id": job_id,
+                "action": a, "mode": "checkpoint",
+                "final_status": state.get("next_route", "")}
+    except Exception as exc:
+        # Fallback: re-enqueue (start from beginning if checkpoint fails)
+        import logging
+        logging.getLogger("api").warning(
+            "resume_failed_fallback_enqueue err=%s", type(exc).__name__
+        )
+        try:
+            await enqueue_build(job_id)
+        except Exception as exc2:
+            raise HTTPException(status_code=503,
+                                detail=f"resume_and_enqueue_failed:{type(exc2).__name__}")
+        return {"status": "resumed", "job_id": job_id,
+                "action": a, "mode": "reenqueue"}
 
 
 # ============================================================
