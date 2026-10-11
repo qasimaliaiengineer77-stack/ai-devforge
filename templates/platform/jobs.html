@@ -72,9 +72,8 @@
   {% set is_active = st in ['building','testing','deploying','improving'] %}
   {% set is_waiting = st == 'awaiting_approval' %}
 
-  <a href="/jobs/{{ job.job_id }}"
-     class="card block p-4 hover:bg-[color:var(--bg-hover)] transition group">
-    <div class="flex items-center gap-4">
+  <div class="card p-4 hover:bg-[color:var(--bg-hover)] transition group relative">
+    <a href="/jobs/{{ job.job_id }}" class="flex items-center gap-4 flex-1 min-w-0 cursor-pointer">
       <!-- Status dot -->
       <div class="shrink-0">
         {% if is_done %}
@@ -126,13 +125,23 @@
           </span>
         </div>
       </div>
+      </a>
 
-      <!-- Arrow -->
-      <div class="shrink-0 text-[color:var(--text-muted)] group-hover:text-indigo-400 group-hover:translate-x-1 transition">
-        <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+      <!-- Delete + Arrow -->
+      <div class="shrink-0 flex items-center gap-2">
+        <button type="button"
+                class="delete-btn w-8 h-8 rounded-lg hover:bg-red-500/15 flex items-center justify-center text-[color:var(--text-muted)] hover:text-red-400 transition"
+                data-job-id="{{ job.job_id }}"
+                title="Delete this job">
+          <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+        </button>
+        <a href="/jobs/{{ job.job_id }}"
+           class="w-8 h-8 rounded-lg hover:bg-[color:var(--bg-hover)] flex items-center justify-center text-[color:var(--text-muted)] group-hover:text-indigo-400 transition">
+          <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
+        </a>
       </div>
     </div>
-  </a>
+  </div>
   {% endfor %}
 </div>
 {% else %}

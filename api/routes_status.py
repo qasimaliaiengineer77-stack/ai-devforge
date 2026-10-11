@@ -222,3 +222,42 @@ async def list_failures(
     items = failures_store.get_pending(job_id)
     return {"job_id": job_id, "count": len(items), "failures": items}
 
+
+# ============================================================
+# DELETE /jobs/{job_id}  -- owner or admin can delete a job
+# ============================================================
+@router.delete("/jobs/{job_id}")
+async def delete_job_endpoint(
+    job_id: str,
+    user: User = Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    """Delete a job (and its failures). Owner or admin only."""
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if user.role != "admin" and job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
+
+    # Clear pending failures
+    try:
+        from db import failures_store
+        from db.database import SessionLocal
+        from db.models import JobFailure
+        from sqlalchemy import delete as sql_delete
+        sf = SessionLocal()
+        try:
+            sf.execute(sql_delete(JobFailure).where(JobFailure.job_id == job_id))
+            sf.commit()
+        finally:
+            sf.close()
+    except Exception:
+        pass
+
+    # Delete job row
+    from db.jobs_store import delete_job as store_delete
+    ok = store_delete(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"status": "deleted", "job_id": job_id}
+
