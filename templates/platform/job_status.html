@@ -86,6 +86,17 @@
           <i data-lucide="x" style="width:14px;height:14px;"></i>
         </button>
       </div>
+      <div class="px-4 pt-4">
+        <div id="edit-hint-box" class="text-[11px] text-amber-200 bg-amber-500/10 border border-amber-500/20 rounded p-2.5 mb-3 hidden">
+          <div class="flex items-start gap-2">
+            <i data-lucide="info" style="width:12px;height:12px;" class="mt-0.5 shrink-0"></i>
+            <div>
+              <div class="font-medium mb-0.5">AI hint for this file:</div>
+              <div id="edit-hint-text" class="font-mono text-[10px]"></div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="p-4 flex-1 overflow-hidden flex flex-col">
         <textarea id="edit-content" class="w-full flex-1 font-mono text-xs bg-[#0d1320] border border-[color:var(--border)] rounded p-3 resize-none" style="min-height:300px;"></textarea>
       </div>
@@ -101,52 +112,77 @@
   </div>
 </div>
 
-<!-- Progress card -->
-<div class="card p-5 mb-4">
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-    <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Stage</div>
-      <div id="current-node" class="font-mono font-semibold text-white">—</div>
+<!-- Three status cards -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+  <div class="card p-5 flex items-center gap-4">
+    <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0">
+      <i data-lucide="code-2" class="text-indigo-400" style="width:20px;height:20px;"></i>
     </div>
-    <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Attempts</div>
-      <div id="attempts" class="font-mono font-semibold text-white">—</div>
+    <div class="min-w-0">
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-0.5">Stage</div>
+      <div id="current-node" class="text-xl font-bold text-white capitalize truncate">—</div>
     </div>
-    <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Duration</div>
-      <div id="elapsed" class="font-mono font-semibold text-white">—</div>
+  </div>
+  <div class="card p-5 flex items-center gap-4">
+    <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0">
+      <i data-lucide="refresh-cw" class="text-cyan-400" style="width:20px;height:20px;"></i>
+    </div>
+    <div class="min-w-0">
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-0.5">Attempts</div>
+      <div id="attempts" class="text-xl font-bold text-white">—</div>
+    </div>
+  </div>
+  <div class="card p-5 flex items-center gap-4">
+    <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+      <i data-lucide="clock" class="text-emerald-400" style="width:20px;height:20px;"></i>
+    </div>
+    <div class="min-w-0">
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-0.5">Duration</div>
+      <div id="elapsed" class="text-xl font-bold text-white">—</div>
     </div>
   </div>
 </div>
 
-<!-- Live Timer -->
+<!-- Live Progress -->
 <div id="timer-panel" class="card p-5 mb-4">
-  <div class="flex items-center justify-between mb-3">
-    <div class="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
-      <i data-lucide="timer" style="width:12px;height:12px;"></i>
-      Live progress
+  <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-2 text-[11px] uppercase tracking-widest text-[color:var(--text-muted)] font-semibold">
+      <i data-lucide="zap" style="width:14px;height:14px;" class="text-indigo-400"></i>
+      Live Progress
     </div>
-    <div id="timer-status" class="text-xs text-[color:var(--text-muted)]">waiting…</div>
-  </div>
-
-  <div class="grid grid-cols-3 gap-4 mb-3 text-sm">
-    <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Elapsed</div>
-      <div id="timer-elapsed" class="font-mono font-semibold text-white text-lg">0m 0s</div>
-    </div>
-    <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Remaining</div>
-      <div id="timer-remaining" class="font-mono font-semibold text-cyan-300 text-lg">—</div>
-    </div>
-    <div>
-      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Files</div>
-      <div id="timer-files" class="font-mono font-semibold text-white text-lg">0 / 10</div>
+    <div id="timer-status" class="flex items-center gap-2 text-xs text-indigo-300">
+      <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+      <span>waiting…</span>
     </div>
   </div>
 
-  <div class="w-full h-2 bg-[#0d1320] rounded-full overflow-hidden">
-    <div id="timer-bar" class="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all"
+  <div class="w-full h-2.5 bg-[#0d1320] rounded-full overflow-hidden mb-4">
+    <div id="timer-bar" class="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-400 transition-all duration-700 rounded-full"
          style="width: 0%"></div>
+  </div>
+
+  <div class="grid grid-cols-3 divide-x divide-[color:var(--border)]">
+    <div class="flex items-center gap-3 px-2">
+      <i data-lucide="clock" class="text-indigo-400 shrink-0" style="width:18px;height:18px;"></i>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-0.5">Elapsed</div>
+        <div id="timer-elapsed" class="font-bold text-white text-xl">0m 0s</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 px-4">
+      <i data-lucide="hourglass" class="text-cyan-400 shrink-0" style="width:18px;height:18px;"></i>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-0.5">Remaining</div>
+        <div id="timer-remaining" class="font-bold text-cyan-300 text-xl">—</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 px-4">
+      <i data-lucide="file-code" class="text-emerald-400 shrink-0" style="width:18px;height:18px;"></i>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-0.5">Files</div>
+        <div id="timer-files" class="font-bold text-white text-xl">0 / 10</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -679,6 +715,9 @@
                     <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="edit" data-id="${f.id}" data-path="${f.file_path}">
                         <i data-lucide="pencil" style="width:12px;height:12px;"></i> Manual Edit
                     </button>
+                    <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="delete" data-id="${f.id}">
+                        <i data-lucide="trash-2" style="width:12px;height:12px;"></i> Delete
+                    </button>
                     <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="skip" data-id="${f.id}">
                         <i data-lucide="skip-forward" style="width:12px;height:12px;"></i> Skip
                     </button>
@@ -724,6 +763,11 @@
         const fid = parseInt(t.dataset.id, 10);
         if (act === "retry") { await resolveFailure(fid, "retry"); }
         else if (act === "skip") { await resolveFailure(fid, "skip"); }
+        else if (act === "delete") {
+            if (confirm("Delete this failed file and continue?")) {
+                await resolveFailure(fid, "delete");
+            }
+        }
         else if (act === "abort") {
             if (confirm("Abort this build? It will be marked failed.")) {
                 await resolveFailure(fid, "abort");
@@ -737,6 +781,13 @@
             const item = (j.failures || []).find(x => x.id === fid);
             $("edit-path").textContent = editFilePath;
             $("edit-content").value = (item && item.ai_content) || "";
+            const hintText = (item && item.hint) || "";
+            if (hintText) {
+                $("edit-hint-text").textContent = hintText;
+                $("edit-hint-box").classList.remove("hidden");
+            } else {
+                $("edit-hint-box").classList.add("hidden");
+            }
             $("edit-modal").classList.remove("hidden");
             $("edit-modal").classList.add("flex");
         }
