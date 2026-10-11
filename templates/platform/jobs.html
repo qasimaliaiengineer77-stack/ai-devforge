@@ -72,8 +72,9 @@
   {% set is_active = st in ['building','testing','deploying','improving'] %}
   {% set is_waiting = st == 'awaiting_approval' %}
 
-  <div class="card p-4 hover:bg-[color:var(--bg-hover)] transition group relative">
-    <a href="/jobs/{{ job.job_id }}" class="flex items-center gap-4 flex-1 min-w-0 cursor-pointer">
+  <a href="/jobs/{{ job.job_id }}"
+     class="card block p-4 hover:bg-[color:var(--bg-hover)] transition group relative">
+    <div class="flex items-center gap-4">
       <!-- Status dot -->
       <div class="shrink-0">
         {% if is_done %}
@@ -125,23 +126,22 @@
           </span>
         </div>
       </div>
-      </a>
 
-      <!-- Delete + Arrow -->
-      <div class="shrink-0 flex items-center gap-2">
+      <!-- Action icons -->
+      <div class="shrink-0 flex items-center gap-1">
         <button type="button"
                 class="delete-btn w-8 h-8 rounded-lg hover:bg-red-500/15 flex items-center justify-center text-[color:var(--text-muted)] hover:text-red-400 transition"
                 data-job-id="{{ job.job_id }}"
                 title="Delete this job">
-          <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+          <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
         </button>
-        <a href="/jobs/{{ job.job_id }}"
-           class="w-8 h-8 rounded-lg hover:bg-[color:var(--bg-hover)] flex items-center justify-center text-[color:var(--text-muted)] group-hover:text-indigo-400 transition">
+        <div class="text-[color:var(--text-muted)] group-hover:text-indigo-400 group-hover:translate-x-1 transition">
           <i data-lucide="arrow-right" style="width:18px;height:18px;"></i>
-        </a>
+        </div>
       </div>
     </div>
-  </div>
+  </a>
+
   {% endfor %}
 </div>
 {% else %}
@@ -161,4 +161,53 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const jobId = btn.dataset.jobId;
+      if (!confirm("Delete job " + jobId + "? This cannot be undone.")) return;
+
+      const csrfEl = document.querySelector('input[name="csrf_token"]');
+      const csrf = csrfEl ? csrfEl.value : "";
+
+      try {
+        // Try DELETE first; fall back to POST if 405
+        let r = await fetch("/jobs/" + encodeURIComponent(jobId), {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { "X-CSRF-Token": csrf },
+        });
+        if (r.status === 405 || r.status === 404) {
+          // Fall back to POST
+          r = await fetch("/delete-job/" + encodeURIComponent(jobId), {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "X-CSRF-Token": csrf },
+          });
+        }
+        const text = await r.text();
+        if (!r.ok) {
+          alert("Delete failed (" + r.status + "): " + text);
+          return;
+        }
+        const row = btn.closest(".card");
+        if (row) {
+          row.style.transition = "opacity .2s, transform .2s";
+          row.style.opacity = "0";
+          row.style.transform = "translateX(-20px)";
+          setTimeout(() => row.remove(), 200);
+        }
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

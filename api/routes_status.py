@@ -261,3 +261,38 @@ async def delete_job_endpoint(
         raise HTTPException(status_code=404, detail="job not found")
     return {"status": "deleted", "job_id": job_id}
 
+
+# ============================================================
+# POST /delete-job/{job_id}  -- POST fallback for delete
+# ============================================================
+@router.post("/delete-job/{job_id}")
+async def delete_job_post(
+    job_id: str,
+    user: User = Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if user.role != "admin" and job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
+
+    try:
+        from db.database import SessionLocal
+        from db.models import JobFailure
+        from sqlalchemy import delete as sql_delete
+        sf = SessionLocal()
+        try:
+            sf.execute(sql_delete(JobFailure).where(JobFailure.job_id == job_id))
+            sf.commit()
+        finally:
+            sf.close()
+    except Exception as e:
+        pass
+
+    from db.jobs_store import delete_job as store_delete
+    ok = store_delete(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"status": "deleted", "job_id": job_id}
+
