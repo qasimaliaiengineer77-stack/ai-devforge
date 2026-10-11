@@ -134,6 +134,22 @@ def _sanitize_requirements(workspace: Path) -> None:
             continue
         if allowed.match(s2):
             cleaned.append(s2)
+
+    # Safety net: if the model produced junk (or too few valid lines),
+    # inject the essential packages required by Section 9.
+    if len(cleaned) < 3:
+        cleaned = [
+            "fastapi==0.142.2",
+            "starlette==1.6.0",
+            "uvicorn[standard]==0.34.0",
+            "sqlalchemy==2.0.36",
+            "pydantic==2.10.4",
+            "python-multipart==0.0.32",
+            "passlib==1.7.4",
+            "bcrypt==4.0.1",
+            "jinja2==3.1.6",
+        ]
+
     req.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
 
 
