@@ -116,6 +116,18 @@ def _rag_topics_for(path: str) -> list[str]:
 # --- System prompt -------------------------------------------------------
 CODER_SYSTEM_PROMPT = """You are the Coder agent in an AI software company.
 
+MINIMUM LENGTH (HARD requirement, reject if smaller):
+- database.py     : at least 80 lines of code
+- models.py       : at least 60 lines of code (1 model class per table)
+- schemas.py      : at least 40 lines of code
+- auth.py         : at least 60 lines of code (hashing + login + logout + CSRF)
+- main.py         : at least 100 lines of code (all routes + startup + templates)
+- templates/*.html: at least 60 lines of HTML each
+- static/style.css: at least 40 lines of CSS
+- requirements.txt: at least 8 packages, one per line, no prose
+
+If any file is shorter than the minimum above, the build WILL be rejected.
+
 PER-FILE REQUIREMENTS (these are HARD requirements; a missing item = FAIL):
 - database.py   : MUST import sqlalchemy. MUST define a Base class and a
                   `backup_db()` function. MUST read DATABASE_URL from
@@ -406,8 +418,17 @@ def _validate_file(path: str, content: str) -> tuple[bool, str, dict]:
         if unknown:
             meta["warnings"].append(warn)
 
-    # 5.5: minimum file size (reasoning models may emit stubs)
-    min_bytes = 800 if kind == "python" else 500
+    # 5.5: minimum file size (real code, not a stub)
+    if kind == "python":
+        min_bytes = 2000
+    elif kind == "html":
+        min_bytes = 1500
+    elif kind == "css":
+        min_bytes = 1000
+    elif kind == "requirements":
+        min_bytes = 60   # at least a few packages
+    else:
+        min_bytes = 200
     if len(content) < min_bytes:
         return False, f"file_too_small:{len(content)}<{min_bytes}", meta
 
