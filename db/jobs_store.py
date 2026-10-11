@@ -275,13 +275,44 @@ def job_to_status_dict(job: Job) -> dict:
             "message": job.error_message or "",
             "attempt": job.error_attempt,
         }
+    files = decode_files(job)
+
+    # Progress hints for UI timer
+    total_files_est = 10  # typical plan size (Architect decides 8-10)
+    files_done = len(files)
+
+    # Estimated total build time (seconds) based on observed averages
+    # PM+Architect+Designer ~30s, each file ~35s, tester ~120s, improver ~120s
+    base = 30 + 120 + 120
+    estimate_total = base + total_files_est * 35
+
+    # Elapsed from created_at to now
+    elapsed = 0
+    if job.created_at:
+        from datetime import datetime, timezone
+        try:
+            created = job.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            elapsed = int((datetime.now(timezone.utc) - created).total_seconds())
+        except Exception:
+            elapsed = 0
+
+    # Refine estimate as files complete
+    if files_done > 0 and job.status == "building":
+        # extrapolate: (elapsed / files_done) * total
+        per_file = max(20, elapsed // max(files_done, 1))
+        estimate_total = base + per_file * total_files_est
+
+    remaining = max(0, estimate_total - elapsed)
+
     return {
         "job_id": job.job_id,
         "requirement": job.requirement,
         "status": job.status,
         "current_node": job.current_node or "",
         "features": decode_features(job),
-        "files": decode_files(job),
+        "files": files,
         "scores": decode_scores(job),
         "error": err,
         "live_url": job.live_url or "",
@@ -289,6 +320,12 @@ def job_to_status_dict(job: Job) -> dict:
         "version": job.version or "",
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        # Timer fields
+        "elapsed_seconds": elapsed,
+        "estimate_total_seconds": estimate_total,
+        "remaining_seconds": remaining,
+        "files_done": files_done,
+        "files_total_est": total_files_est,
     }
 
 

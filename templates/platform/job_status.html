@@ -104,6 +104,37 @@
   </div>
 </div>
 
+<!-- Live Timer -->
+<div id="timer-panel" class="card p-5 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[color:var(--text-muted)]">
+      <i data-lucide="timer" style="width:12px;height:12px;"></i>
+      Live progress
+    </div>
+    <div id="timer-status" class="text-xs text-[color:var(--text-muted)]">waiting…</div>
+  </div>
+
+  <div class="grid grid-cols-3 gap-4 mb-3 text-sm">
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Elapsed</div>
+      <div id="timer-elapsed" class="font-mono font-semibold text-white text-lg">0m 0s</div>
+    </div>
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Remaining</div>
+      <div id="timer-remaining" class="font-mono font-semibold text-cyan-300 text-lg">—</div>
+    </div>
+    <div>
+      <div class="text-[10px] uppercase tracking-wider text-[color:var(--text-muted)] mb-1">Files</div>
+      <div id="timer-files" class="font-mono font-semibold text-white text-lg">0 / 10</div>
+    </div>
+  </div>
+
+  <div class="w-full h-2 bg-[#0d1320] rounded-full overflow-hidden">
+    <div id="timer-bar" class="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all"
+         style="width: 0%"></div>
+  </div>
+</div>
+
 <!-- Live URL -->
 <div id="live-url-box" class="hidden card p-4 mb-4 border-emerald-500/30 bg-emerald-500/5">
   <div class="flex items-center gap-3">
@@ -356,10 +387,7 @@
             applyRaw(s);
             setText("current-node", s.current_node);
             setText("attempts", s.attempts ?? s.coder_attempts);
-            if (s.created_at && s.updated_at) {
-                const dt = (new Date(s.updated_at) - new Date(s.created_at)) / 1000;
-                if (dt > 0) setText("elapsed", Math.round(dt) + "s");
-            }
+            applyTimer(s);
         } catch (e) { /* retry next tick */ }
     }
 
@@ -395,6 +423,60 @@
 
     $("btn-approve").addEventListener("click", () => decide("yes"));
     $("btn-reject").addEventListener("click", () => decide("no"));
+
+    // ---- Timer logic ----
+    function fmt(s) {
+        s = Math.max(0, Math.floor(s));
+        const m = Math.floor(s / 60);
+        const ss = s % 60;
+        return m + "m " + ss + "s";
+    }
+
+    function applyTimer(s) {
+        const el = s.elapsed_seconds;
+        const rem = s.remaining_seconds;
+        const done = s.files_done;
+        const total = s.files_total_est || 10;
+
+        if (typeof el === "number") {
+            setText("timer-elapsed", fmt(el));
+        }
+        if (typeof rem === "number" && s.status !== "done" &&
+            s.status !== "failed" && s.status !== "awaiting_approval" &&
+            s.status !== "awaiting_user_input") {
+            setText("timer-remaining", "~" + fmt(rem));
+        } else if (s.status === "done") {
+            setText("timer-remaining", "done");
+        } else if (s.status === "failed") {
+            setText("timer-remaining", "failed");
+        } else if (s.status === "awaiting_approval") {
+            setText("timer-remaining", "awaiting");
+        } else if (s.status === "awaiting_user_input") {
+            setText("timer-remaining", "paused");
+        } else {
+            setText("timer-remaining", "—");
+        }
+
+        if (typeof done === "number") {
+            setText("timer-files", done + " / " + total);
+        }
+
+        // Progress bar: files done vs total, capped at 100%
+        const pct = Math.min(100, Math.round((done / total) * 100));
+        const bar = $("timer-bar");
+        if (bar) bar.style.width = pct + "%";
+
+        // Status hint
+        const st = s.status;
+        if (st === "building") setText("timer-status", "🔨 building…");
+        else if (st === "testing") setText("timer-status", "🧪 testing in sandbox…");
+        else if (st === "improving") setText("timer-status", "⚡ running Lighthouse…");
+        else if (st === "awaiting_approval") setText("timer-status", "⏸ awaiting approval");
+        else if (st === "awaiting_user_input") setText("timer-status", "⚠ paused - your input");
+        else if (st === "done") setText("timer-status", "✅ done");
+        else if (st === "failed") setText("timer-status", "❌ failed");
+        else setText("timer-status", st);
+    }
 
     // ---- Failure panel logic ----
     let editFailureId = null;
