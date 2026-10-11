@@ -204,3 +204,21 @@ async def resolve_failure_endpoint(
     return {"status": "resumed", "job_id": job_id,
             "action": a, "failure_id": body.failure_id}
 
+
+# ============================================================
+# GET /failures/{job_id}  -- list pending failures for a job
+# ============================================================
+@router.get("/failures/{job_id}")
+async def list_failures(
+    job_id: str,
+    user: User = Depends(require_user),
+    db: OrmSession = Depends(get_db),
+):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if user.role != "admin" and job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="not allowed")
+    items = failures_store.get_pending(job_id)
+    return {"job_id": job_id, "count": len(items), "failures": items}
+

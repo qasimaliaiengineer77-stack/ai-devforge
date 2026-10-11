@@ -49,6 +49,43 @@
   </div>
 </div>
 
+<!-- Failure panel (visible when status=awaiting_user_input) -->
+<div id="failure-panel" class="hidden card p-5 mb-4 border-orange-500/40 bg-orange-500/5">
+  <div class="flex items-start gap-3 mb-4">
+    <i data-lucide="alert-circle" class="text-orange-400 mt-0.5 shrink-0" style="width:20px;height:20px;"></i>
+    <div class="flex-1">
+      <div class="font-semibold text-orange-200 mb-1">File failure - your input needed</div>
+      <p class="text-xs text-[color:var(--text-muted)]">
+        The Coder stopped. Review each failed file and decide: retry, edit manually, skip, or abort.
+      </p>
+    </div>
+  </div>
+  <div id="failure-list" class="space-y-3"></div>
+
+  <!-- Manual edit modal -->
+  <div id="edit-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="card max-w-3xl w-full max-h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b border-[color:var(--border)]">
+        <div class="font-semibold">Edit file: <span id="edit-path" class="font-mono text-sm text-cyan-300"></span></div>
+        <button id="edit-close" class="btn btn-ghost text-xs px-2 py-1">
+          <i data-lucide="x" style="width:14px;height:14px;"></i>
+        </button>
+      </div>
+      <div class="p-4 flex-1 overflow-hidden flex flex-col">
+        <textarea id="edit-content" class="w-full flex-1 font-mono text-xs bg-[#0d1320] border border-[color:var(--border)] rounded p-3 resize-none" style="min-height:300px;"></textarea>
+      </div>
+      <div class="flex items-center gap-2 p-4 border-t border-[color:var(--border)]">
+        <button id="edit-save" class="btn btn-primary px-4">
+          <i data-lucide="save" style="width:14px;height:14px;"></i>
+          Save &amp; Resume
+        </button>
+        <button id="edit-cancel" class="btn btn-ghost px-4">Cancel</button>
+        <span id="edit-hint" class="text-xs text-[color:var(--text-muted)] ml-2"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Progress card -->
 <div class="card p-5 mb-4">
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
@@ -359,8 +396,145 @@
     $("btn-approve").addEventListener("click", () => decide("yes"));
     $("btn-reject").addEventListener("click", () => decide("no"));
 
+    // ---- Failure panel logic ----
+    let editFailureId = null;
+    let editFilePath = null;
+
+    async function loadFailures() {
+        try {
+            const r = await fetch("/failures/" + encodeURIComponent(JOB_ID), { credentials: "same-origin" });
+            if (!r.ok) return;
+            const j = await r.json();
+            if (!j.count) {
+                $("failure-panel").classList.add("hidden");
+                return;
+            }
+            renderFailures(j.failures);
+            $("failure-panel").classList.remove("hidden");
+        } catch (e) {}
+    }
+
+    function renderFailures(items) {
+        const wrap = $("failure-list");
+        wrap.innerHTML = "";
+        items.forEach(f => {
+            const sev = f.severity || "unknown";
+            const conf = f.confidence || 0;
+            const color = sev === "minor" ? "text-emerald-400" :
+                          sev === "moderate" ? "text-yellow-400" :
+                          sev === "severe" ? "text-red-400" : "text-slate-400";
+            const div = document.createElement("div");
+            div.className = "rounded-lg border border-[color:var(--border)] bg-[#0d1320] p-4";
+            div.innerHTML = `
+                <div class="flex items-start justify-between gap-3 mb-2">
+                    <div class="min-w-0">
+                        <div class="font-mono text-sm text-white break-all">${f.file_path}</div>
+                        <div class="text-[11px] text-[color:var(--text-muted)] mt-1">
+                            <span class="${color} font-semibold">${sev.toUpperCase()}</span>
+                            <span class="mx-2">·</span>
+                            <span>confidence ${conf}%</span>
+                            <span class="mx-2">·</span>
+                            <span class="font-mono">${f.error_code || "unknown"}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-xs text-[color:var(--text-muted)] font-mono mb-3 break-words">${(f.error_message || "").slice(0, 250)}</div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button class="btn btn-primary text-xs px-3 py-1.5" data-act="retry" data-id="${f.id}">
+                        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Retry
+                    </button>
+                    <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="edit" data-id="${f.id}" data-path="${f.file_path}">
+                        <i data-lucide="pencil" style="width:12px;height:12px;"></i> Manual Edit
+                    </button>
+                    <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="skip" data-id="${f.id}">
+                        <i data-lucide="skip-forward" style="width:12px;height:12px;"></i> Skip
+                    </button>
+                    <button class="btn btn-danger text-xs px-3 py-1.5" data-act="abort" data-id="${f.id}">
+                        <i data-lucide="x" style="width:12px;height:12px;"></i> Abort
+                    </button>
+                </div>
+            `;
+            wrap.appendChild(div);
+        });
+        if (window.lucide) lucide.createIcons();
+    }
+
+    async function resolveFailure(failureId, action, manualContent) {
+        try {
+            const body = { failure_id: failureId, action: action };
+            if (manualContent !== undefined) body.manual_content = manualContent;
+            const r = await fetch("/resolve-failure/" + encodeURIComponent(JOB_ID), {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": CSRF_TOKEN },
+                body: JSON.stringify(body),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                alert("Failed: " + (j.detail || r.status));
+                return false;
+            }
+            await loadFailures();
+            terminal = false;
+            poll();
+            return true;
+        } catch (e) {
+            alert("Network error: " + e.message);
+            return false;
+        }
+    }
+
+    document.addEventListener("click", async (ev) => {
+        const t = ev.target.closest("button[data-act]");
+        if (!t) return;
+        const act = t.dataset.act;
+        const fid = parseInt(t.dataset.id, 10);
+        if (act === "retry") { await resolveFailure(fid, "retry"); }
+        else if (act === "skip") { await resolveFailure(fid, "skip"); }
+        else if (act === "abort") {
+            if (confirm("Abort this build? It will be marked failed.")) {
+                await resolveFailure(fid, "abort");
+            }
+        } else if (act === "edit") {
+            editFailureId = fid;
+            editFilePath = t.dataset.path;
+            // Fetch content via failures endpoint (already loaded) - reuse list
+            const r = await fetch("/failures/" + encodeURIComponent(JOB_ID), { credentials: "same-origin" });
+            const j = await r.json();
+            const item = (j.failures || []).find(x => x.id === fid);
+            $("edit-path").textContent = editFilePath;
+            $("edit-content").value = (item && item.ai_content) || "";
+            $("edit-modal").classList.remove("hidden");
+            $("edit-modal").classList.add("flex");
+        }
+    });
+
+    $("edit-close").addEventListener("click", () => {
+        $("edit-modal").classList.add("hidden");
+        $("edit-modal").classList.remove("flex");
+    });
+    $("edit-cancel").addEventListener("click", () => {
+        $("edit-modal").classList.add("hidden");
+        $("edit-modal").classList.remove("flex");
+    });
+    $("edit-save").addEventListener("click", async () => {
+        const content = $("edit-content").value;
+        if (!content.trim()) { alert("Empty content"); return; }
+        $("edit-hint").textContent = "Saving…";
+        const ok = await resolveFailure(editFailureId, "manual", content);
+        $("edit-hint").textContent = ok ? "Saved" : "Failed";
+        if (ok) {
+            $("edit-modal").classList.add("hidden");
+            $("edit-modal").classList.remove("flex");
+        }
+    });
+
     poll();
-    const timer = setInterval(() => { if (terminal) { clearInterval(timer); } else { poll(); } }, 3000);
+    loadFailures();
+    const timer = setInterval(() => {
+        if (terminal) { clearInterval(timer); }
+        else { poll(); loadFailures(); }
+    }, 3000);
 })();
 </script>
 {% endblock %}
