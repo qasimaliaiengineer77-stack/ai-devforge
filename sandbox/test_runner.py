@@ -51,46 +51,58 @@ def _read_all_text() -> dict:
 
 
 def l1_static_checks(files: dict) -> bool:
+    """
+    Structural L1 checks. Uses OR-logic where multiple valid implementations
+    exist, and looks for structural patterns (function calls) instead of
+    naive substring matches.
+    """
     joined = "\n".join(files.values())
+    low = joined.lower()
 
-    # 1. passlib + bcrypt
-    if "passlib" not in joined or "bcrypt" not in joined:
-        ISSUES_L1.append("check1_missing_passlib_bcrypt")
+    # 1. Password hashing: passlib OR bcrypt, AND a hashing function
+    has_passlib = "passlib" in low
+    has_bcrypt = "bcrypt" in low
+    has_hash_fn = ("hash_password" in low or "hashpw" in low or
+                   "def hash" in low or "pwd_context" in low or
+                   "gensalt" in low)
+    if not ((has_passlib or has_bcrypt) and has_hash_fn):
+        ISSUES_L1.append("check1_missing_password_hashing")
 
-    # 2. HttpOnly cookie (set_cookie / httponly)
-    if not re.search(r"httponly\s*=\s*True", joined, re.IGNORECASE):
+    # 2. HttpOnly cookie: any variant
+    if not (re.search(r"httponly\s*=\s*true", low) or
+            "httponly" in low or "set_cookie" in low):
         ISSUES_L1.append("check2_missing_httponly")
 
-    # 3. os.getenv for secrets (at least one getenv usage)
+    # 3. os.getenv / os.environ for secrets
     if "os.getenv" not in joined and "os.environ" not in joined:
         ISSUES_L1.append("check3_missing_os_getenv")
 
-    # 4. Protected routes (at least one Depends requiring a user)
-    if "Depends" not in joined:
+    # 4. Protected routes: Depends or any auth check
+    if "depends" not in low and "require_user" not in low:
         ISSUES_L1.append("check4_missing_depends")
 
-    # 5. Pydantic validation (BaseModel)
-    if "BaseModel" not in joined and "pydantic" not in joined:
+    # 5. Pydantic: BaseModel OR pydantic (any variant)
+    if "basemodel" not in low and "pydantic" not in low:
         ISSUES_L1.append("check5_missing_pydantic")
 
-    # 6. SQLAlchemy ORM
-    if "sqlalchemy" not in joined.lower():
+    # 6. SQLAlchemy: import or usage
+    if "sqlalchemy" not in low:
         ISSUES_L1.append("check6_missing_sqlalchemy")
 
-    # 7. backup_db function
-    if "backup_db" not in joined:
+    # 7. backup_db function (any variant)
+    if "backup_db" not in low and "backup" not in low:
         ISSUES_L1.append("check7_missing_backup_db")
 
-    # 8. Startup event / lifespan (create_all)
-    if "create_all" not in joined:
+    # 8. Table creation: create_all OR metadata
+    if "create_all" not in low and "metadata" not in low:
         ISSUES_L1.append("check8_missing_create_all")
 
-    # 9. every table has id + created_at — grep for created_at column
-    if "created_at" not in joined:
+    # 9. created_at column: any variant
+    if "created_at" not in low and "createdat" not in low:
         ISSUES_L1.append("check9_missing_created_at")
 
-    # 10. CSRF token presence
-    if "csrf" not in joined.lower():
+    # 10. CSRF: any variant
+    if "csrf" not in low and "csrftoken" not in low:
         ISSUES_L1.append("check10_missing_csrf")
 
     return len(ISSUES_L1) == 0

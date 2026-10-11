@@ -218,6 +218,22 @@ Rules:
 """
 
 
+
+
+# Fixed requirements.txt content - we do NOT let AI generate this.
+FIXED_REQUIREMENTS = """fastapi==0.142.2
+starlette==1.6.0
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pydantic==2.10.4
+python-multipart==0.0.32
+passlib==1.7.4
+bcrypt==4.0.1
+jinja2==3.1.6
+httpx
+"""
+
+
 class CoderAgentError(RuntimeError):
     """Raised when the Coder agent cannot produce a valid project."""
 
@@ -501,7 +517,12 @@ async def _generate_one(
     user_id: str,
     trace_id: str,
     log,
+    extra_hints: Optional[list[str]] = None,
 ) -> tuple[Optional[str], int, list[str], str, str]:
+    # Hard-coded requirements.txt - skip AI to prevent junk
+    if target_path == "requirements.txt":
+        log.info("coder_fixed_file", path=target_path)
+        return FIXED_REQUIREMENTS, 0, [], "", ""
     """
     Generate one file. Returns (content_or_None, rag_tokens_used, warnings).
     """
@@ -517,7 +538,13 @@ async def _generate_one(
         rag_context = ""
         rag_tokens = 0
 
-    user_body = _build_user_body(pm_brief, plan, design, target_path, rag_context)
+    # If tester gave specific issues, append them as repair hints
+    hint_text = ""
+    if extra_hints:
+        hint_text = "\n\nREPAIR HINTS (previous tester errors):\n- " + \
+                    "\n- ".join(str(h)[:200] for h in extra_hints[:6])
+
+    user_body = _build_user_body(pm_brief, plan, design, target_path, rag_context) + hint_text
     san = pg.sanitize_user_input(user_body)
     if not san.ok:
         # Very unlikely: the body is our own JSON + RAG. Truncate and retry once.
@@ -622,6 +649,7 @@ async def run_coder_agent(
                 target_path=path,
                 job_id=job_id, user_id=user_id, trace_id=trace_id,
                 log=log,
+                extra_hints=extra_hints,
             )
             total_rag_tokens += rag_tokens
             if content is None:
