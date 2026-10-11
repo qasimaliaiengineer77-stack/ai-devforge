@@ -595,7 +595,7 @@ async def run_coder_agent(
 
     for path in wanted:
         try:
-            content, rag_tokens, warnings = await _generate_one(
+            content, rag_tokens, warnings, fail_reason = await _generate_one(
                 pm_brief=pm_brief, plan=plan, design=design,
                 target_path=path,
                 job_id=job_id, user_id=user_id, trace_id=trace_id,
@@ -603,8 +603,8 @@ async def run_coder_agent(
             )
             total_rag_tokens += rag_tokens
             if content is None:
-                failed.append({"path": path, "reason": "repair_exhausted"})
-                log.error("coder_file_unrecoverable", path=path)
+                failed.append({"path": path, "reason": fail_reason or "repair_exhausted"})
+                log.error("coder_file_unrecoverable", path=path, reason=fail_reason)
             else:
                 files_out.append({"path": path, "content": content})
                 log.info("coder_file_ok", path=path,
