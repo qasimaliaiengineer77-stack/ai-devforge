@@ -498,19 +498,70 @@
         else setText("timer-status", st);
     }
 
-    // ---- Alert sound + notification on failure ----
-    function playAlert() {
+    // ---- Voice alert + beep + notification on failure ----
+    let voicesLoaded = false;
+    let cachedVoice = null;
+
+    function loadVoices() {
+        if (!("speechSynthesis" in window)) return;
+        const all = window.speechSynthesis.getVoices();
+        if (!all.length) return;
+
+        // Preference order:
+        // 1) Urdu (ur-PK, ur-IN)
+        // 2) Hindi (hi-IN) -- sounds close to Urdu
+        // 3) English (en-IN, en-GB) female -- common fallback
+        // 4) Any female voice
+        // 5) Any voice
+        const prefs = [
+            v => /ur[-_]?/i.test(v.lang) || /urdu/i.test(v.name),
+            v => /hi[-_]?/i.test(v.lang) || /hindi/i.test(v.name),
+            v => /en[-_]?in/i.test(v.lang),
+            v => /female|zira|swara|kalpana|heera|hazel|susan|samantha/i.test(v.name),
+            v => true,
+        ];
+        for (const f of prefs) {
+            const found = all.find(f);
+            if (found) { cachedVoice = found; break; }
+        }
+        voicesLoaded = true;
+    }
+
+    if ("speechSynthesis" in window) {
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function speak(text, opts) {
+        if (!("speechSynthesis" in window)) return false;
+        if (!voicesLoaded) loadVoices();
+        try {
+            const u = new SpeechSynthesisUtterance(text);
+            if (cachedVoice) {
+                u.voice = cachedVoice;
+                u.lang = cachedVoice.lang;
+            }
+            u.rate = (opts && opts.rate) || 0.95;
+            u.pitch = (opts && opts.pitch) || 1.15;  // slightly female-ish
+            u.volume = 1.0;
+            window.speechSynthesis.speak(u);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function beep() {
         try {
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            // Two-tone beep
             const now = ctx.currentTime;
-            [0, 0.22].forEach((offset, i) => {
+            [0, 0.22, 0.44].forEach((offset, i) => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = "sine";
-                osc.frequency.value = i === 0 ? 880 : 660;
+                osc.frequency.value = i === 0 ? 880 : (i === 1 ? 660 : 880);
                 gain.gain.setValueAtTime(0.0001, now + offset);
-                gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.03);
+                gain.gain.exponentialRampToValueAtTime(0.22, now + offset + 0.03);
                 gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
                 osc.connect(gain);
                 gain.connect(ctx.destination);
@@ -518,12 +569,32 @@
                 osc.stop(now + offset + 0.2);
             });
         } catch (e) {}
-        // Browser notification
+    }
+
+    function playAlert() {
+        // Chrome requires user interaction before speech.
+        // Try speech, fall back to beep.
+        const line1 = "Qasim sir, ek file mein masla hai. Barah-e-karam jald az jald dekhein.";
+        const line2 = "Qasim sir, file fail ho gayi hai.";
+        const line3 = "Qasim sir, dashboard dekhein.";
+
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+
+        const ok1 = speak(line1, { rate: 0.95 });
+        // Queue the remaining two lines with small gaps.
+        setTimeout(() => { speak(line2, { rate: 0.95 }); }, 3500);
+        setTimeout(() => { speak(line3, { rate: 0.95 }); }, 5500);
+
+        // Beep as a backup / end cue.
+        setTimeout(beep, ok1 ? 7000 : 0);
+
+        // Browser notification (professional text)
         try {
             if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("AI Software Co.", {
-                    body: "Qasim sir, file fail ho gayi — jaldi se thek karein",
+                new Notification("Build Paused - Action Required", {
+                    body: "A generated file failed validation. Open the dashboard to retry or edit.",
                     icon: "/favicon.ico",
+                    tag: "ai-co-build-failed",
                 });
             }
         } catch (e) {}
@@ -531,7 +602,6 @@
 
     function maybeAlertOnFailure(s) {
         const failCount = (s.status === "awaiting_user_input") ? 1 : 0;
-        // Alert only when a new failure appears
         if (failCount > lastAlertedFailureCount) {
             playAlert();
             document.title = "⚠ FAILED — AI Software Co.";
