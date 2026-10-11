@@ -42,8 +42,8 @@ def supports_reasoning_effort(model: str) -> bool:
 # --- Output token caps ----------------------------------------------------
 # Free tier on Groq caps chat models at 8,000 TPM. We cap output per call
 # so a single request stays well inside that budget.
-PRIMARY_MAX_TOKENS = int(os.getenv("GROQ_PRIMARY_MAX_TOKENS", "2000"))
-FALLBACK_MAX_TOKENS = int(os.getenv("GROQ_FALLBACK_MAX_TOKENS", "1500"))
+PRIMARY_MAX_TOKENS = int(os.getenv("GROQ_PRIMARY_MAX_TOKENS", "4000"))
+FALLBACK_MAX_TOKENS = int(os.getenv("GROQ_FALLBACK_MAX_TOKENS", "4000"))
 
 # --- Reasoning effort (GPT-OSS models) ------------------------------------
 # openai/gpt-oss-* are reasoning models. Allowed: "low", "medium", "high".
@@ -68,5 +68,5 @@ BACKOFF_MAX_SECONDS = float(os.getenv("GROQ_BACKOFF_MAX_SECONDS", "60"))
 
 # --- Token budget (Coder, per Section 6) ----------------------------------
 CODER_TPM_BUDGET = 8000
-CODER_RAG_TOKEN_CAP = 1500
-CODER_OUTPUT_RESERVE = 2000
+CODER_RAG_TOKEN_CAP = 800
+CODER_OUTPUT_RESERVE = 4000

@@ -406,6 +406,11 @@ def _validate_file(path: str, content: str) -> tuple[bool, str, dict]:
         if unknown:
             meta["warnings"].append(warn)
 
+    # 5.5: minimum file size (reasoning models may emit stubs)
+    min_bytes = 800 if kind == "python" else 500
+    if len(content) < min_bytes:
+        return False, f"file_too_small:{len(content)}<{min_bytes}", meta
+
     # 6: secrets (any file type)
     ok, reason = _check_secrets(content)
     if not ok:
