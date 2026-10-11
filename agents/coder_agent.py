@@ -46,7 +46,7 @@ from security.secret_scan import contains_secret
 
 logger = get_logger("agents.coder")
 
-MAX_REPAIR_ATTEMPTS = 1
+MAX_REPAIR_ATTEMPTS = 2
 MAX_FILE_CONTENT_CHARS = 30000
 
 # --- Section 15 generation order ----------------------------------------
@@ -165,6 +165,48 @@ return a single JSON object with exactly two keys:
   "content": "<the full file contents as a single string>"
 }
 
+
+
+COMMON MISTAKES — AVOID THESE (they will fail validation):
+
+1. Python syntax errors:
+   - WRONG: def login(username, password, csrf_token):     # all required, no default OK
+   - WRONG: def login(username, password="", csrf_token):  # required after default = syntax error
+   - RIGHT: def login(username, password="", csrf_token="") # all with defaults after
+   - RIGHT: def login(username, password, csrf_token):      # all without defaults
+   - Rule: parameters WITHOUT defaults must come BEFORE parameters WITH defaults.
+
+2. Missing imports:
+   - Every SQLAlchemy model needs: `from sqlalchemy import Integer, String, DateTime, func`
+   - Every Pydantic model needs: `from pydantic import BaseModel`
+   - Every FastAPI route file needs: `from fastapi import FastAPI, Form, Depends`
+   - Password hashing needs: `from passlib.context import CryptContext`
+   - CSRF/tokens needs: `import secrets`
+
+3. Model requirements (Section 9, rule #9):
+   - EVERY ORM model MUST have `id` (Integer, primary_key=True)
+   - EVERY ORM model MUST have `created_at` (DateTime, server_default=func.now())
+   - Missing either -> auto-fail
+
+4. requirements.txt rules:
+   - One package per line, no prose
+   - Must include: fastapi, uvicorn, sqlalchemy, pydantic, python-multipart, passlib, bcrypt, jinja2
+
+5. Jinja2 templates:
+   - First line MUST be: {% extends "base.html" %} OR <!DOCTYPE html>
+   - Every {% block X %} must be closed with {% endblock %}
+   - Use {{ csrf_token }} inside <input type="hidden" name="csrf_token" value="...">
+
+6. Password hashing:
+   - MUST use: passlib CryptContext OR bcrypt directly
+   - MUST have: hash_password() or similar function
+   - NEVER store plaintext passwords
+
+SELF-CHECK BEFORE RESPONDING:
+   - Is your code valid Python? (mentally run ast.parse)
+   - Does every table have id + created_at?
+   - Does requirements.txt contain only package lines?
+
 STRICT RULES:
 - Output MUST be valid JSON. Double-quoted keys/strings. No trailing commas.
 - Do NOT wrap the JSON in markdown fences or add any prose before/after.
@@ -199,6 +241,7 @@ Return ONLY a single valid JSON object:
 
 Rules:
 - Valid JSON, no markdown fences, no prose.
+- Remember the COMMON MISTAKES list. Most common: parameter without default after parameter with default; missing id/created_at on models; missing passlib/bcrypt imports.
 - Complete file contents (not a diff).
 - If the target is Python: parseable by ast.parse, no os.system/subprocess/eval/exec.
 - If the target is Python: do not hardcode secrets or the DATABASE_URL.
