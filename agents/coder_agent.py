@@ -617,6 +617,8 @@ async def run_coder_agent(
     job_id: str,
     user_id: str,
     trace_id: str,
+    repair_paths: Optional[list[str]] = None,
+    extra_hints: Optional[list[str]] = None,
 ) -> dict:
     """
     Run the Coder agent: (PM + Architect + Designer) -> generated project files.
