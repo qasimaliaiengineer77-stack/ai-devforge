@@ -166,11 +166,20 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                     running.update(partial)
                 _update_job_from_state(job_id, node_name, running)
 
-        # Failure detection: files failed OR workflow hit errors.
+        # Failure detection: file failures, workflow errors,
+        # OR tester fail with all files generated.
         failed_files = running.get("failed_files") or []
         errors = running.get("errors") or []
+        test_result = running.get("test_result", "")
+        test_error = running.get("test_error", "")
 
-        if failed_files or errors:
+        tester_failed_alone = (
+            test_result == "fail"
+            and not failed_files
+            and len(running.get("code_files") or []) > 0
+        )
+
+        if failed_files or errors or tester_failed_alone:
             saved = 0
             for ff in failed_files:
                 try:
@@ -200,6 +209,32 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                     saved += 1
                 except Exception as exc:
                     logger.warning("save_job_failure_failed",
+                                   err=type(exc).__name__)
+
+            # Tester failed but files are OK: save a job-level row with the
+            # tester's error so user sees the reason (L1/L2/L3 details).
+            if tester_failed_alone:
+                l1_ok = running.get("tester_l1_ok", False)
+                l2_ok = running.get("tester_l2_ok", False)
+                l3_ok = running.get("tester_l3_ok", False)
+                issues = running.get("tester_issues") or []
+                detail_lines = []
+                if not l1_ok: detail_lines.append("L1: static security checks failed")
+                if not l2_ok: detail_lines.append("L2: syntax check failed")
+                if not l3_ok: detail_lines.append("L3: HTTP tests failed")
+                if issues:
+                    for it in issues[:5]:
+                        detail_lines.append("  - " + str(it)[:120])
+                detail = " | ".join(detail_lines) or (test_error or "tester failed")
+                try:
+                    failures_store.save_job_failure(
+                        job_id=job_id,
+                        error_code="tester_failed",
+                        error_message=detail[:900],
+                    )
+                    saved += 1
+                except Exception as exc:
+                    logger.warning("save_tester_failure_failed",
                                    err=type(exc).__name__)
 
             jobs_store.update_job(
