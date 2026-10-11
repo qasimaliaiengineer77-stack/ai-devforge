@@ -388,6 +388,7 @@
             setText("current-node", s.current_node);
             setText("attempts", s.attempts ?? s.coder_attempts);
             applyTimer(s);
+            maybeAlertOnFailure(s);
         } catch (e) { /* retry next tick */ }
     }
 
@@ -424,7 +425,12 @@
     $("btn-approve").addEventListener("click", () => decide("yes"));
     $("btn-reject").addEventListener("click", () => decide("no"));
 
-    // ---- Timer logic ----
+    // ---- Timer logic (pause-aware) ----
+    let pausedAccum = 0;      // total seconds spent in paused state
+    let pauseStart = null;    // timestamp when pause began
+    let wasPaused = false;
+    let lastAlertedFailureCount = 0;
+
     function fmt(s) {
         s = Math.max(0, Math.floor(s));
         const m = Math.floor(s / 60);
@@ -433,49 +439,104 @@
     }
 
     function applyTimer(s) {
-        const el = s.elapsed_seconds;
-        const rem = s.remaining_seconds;
         const done = s.files_done;
         const total = s.files_total_est || 10;
+        const isPaused = (s.status === "awaiting_user_input");
+        const isFrozen = isPaused || s.status === "failed" ||
+                         s.status === "done" || s.status === "awaiting_approval";
 
-        if (typeof el === "number") {
-            setText("timer-elapsed", fmt(el));
+        // Pause / resume logic
+        if (isPaused && !wasPaused) {
+            pauseStart = Date.now();
+            wasPaused = true;
+        } else if (!isPaused && wasPaused) {
+            if (pauseStart !== null) {
+                pausedAccum += Math.floor((Date.now() - pauseStart) / 1000);
+            }
+            pauseStart = null;
+            wasPaused = false;
         }
-        if (typeof rem === "number" && s.status !== "done" &&
-            s.status !== "failed" && s.status !== "awaiting_approval" &&
-            s.status !== "awaiting_user_input") {
-            setText("timer-remaining", "~" + fmt(rem));
+
+        // Elapsed: base elapsed from server minus paused time
+        let el = s.elapsed_seconds || 0;
+        if (wasPaused && pauseStart !== null) {
+            const livePause = Math.floor((Date.now() - pauseStart) / 1000);
+            el = Math.max(0, el - pausedAccum - livePause);
+        } else {
+            el = Math.max(0, el - pausedAccum);
+        }
+
+        if (typeof el === "number") setText("timer-elapsed", fmt(el));
+
+        // Remaining: only countdown when active
+        if (isPaused) {
+            setText("timer-remaining", "⏸ paused");
         } else if (s.status === "done") {
             setText("timer-remaining", "done");
         } else if (s.status === "failed") {
             setText("timer-remaining", "failed");
         } else if (s.status === "awaiting_approval") {
-            setText("timer-remaining", "awaiting");
-        } else if (s.status === "awaiting_user_input") {
-            setText("timer-remaining", "paused");
-        } else {
-            setText("timer-remaining", "—");
+            setText("timer-remaining", "awaiting approval");
+        } else if (typeof s.remaining_seconds === "number") {
+            setText("timer-remaining", "~" + fmt(s.remaining_seconds));
         }
 
-        if (typeof done === "number") {
-            setText("timer-files", done + " / " + total);
-        }
+        if (typeof done === "number") setText("timer-files", done + " / " + total);
 
-        // Progress bar: files done vs total, capped at 100%
         const pct = Math.min(100, Math.round((done / total) * 100));
         const bar = $("timer-bar");
         if (bar) bar.style.width = pct + "%";
 
-        // Status hint
         const st = s.status;
         if (st === "building") setText("timer-status", "🔨 building…");
         else if (st === "testing") setText("timer-status", "🧪 testing in sandbox…");
         else if (st === "improving") setText("timer-status", "⚡ running Lighthouse…");
         else if (st === "awaiting_approval") setText("timer-status", "⏸ awaiting approval");
-        else if (st === "awaiting_user_input") setText("timer-status", "⚠ paused - your input");
+        else if (st === "awaiting_user_input") setText("timer-status", "⚠ paused - your input needed");
         else if (st === "done") setText("timer-status", "✅ done");
         else if (st === "failed") setText("timer-status", "❌ failed");
         else setText("timer-status", st);
+    }
+
+    // ---- Alert sound + notification on failure ----
+    function playAlert() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            // Two-tone beep
+            const now = ctx.currentTime;
+            [0, 0.22].forEach((offset, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sine";
+                osc.frequency.value = i === 0 ? 880 : 660;
+                gain.gain.setValueAtTime(0.0001, now + offset);
+                gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.03);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + offset);
+                osc.stop(now + offset + 0.2);
+            });
+        } catch (e) {}
+        // Browser notification
+        try {
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("AI Software Co.", {
+                    body: "Qasim sir, file fail ho gayi — jaldi se thek karein",
+                    icon: "/favicon.ico",
+                });
+            }
+        } catch (e) {}
+    }
+
+    function maybeAlertOnFailure(s) {
+        const failCount = (s.status === "awaiting_user_input") ? 1 : 0;
+        // Alert only when a new failure appears
+        if (failCount > lastAlertedFailureCount) {
+            playAlert();
+            document.title = "⚠ FAILED — AI Software Co.";
+        }
+        lastAlertedFailureCount = failCount;
     }
 
     // ---- Failure panel logic ----
@@ -610,6 +671,13 @@
             $("edit-modal").classList.remove("flex");
         }
     });
+
+    // Ask for browser notification permission (only once)
+    try {
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission();
+        }
+    } catch (e) {}
 
     poll();
     loadFailures();
