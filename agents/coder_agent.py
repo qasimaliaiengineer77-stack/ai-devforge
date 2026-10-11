@@ -550,6 +550,64 @@ def _hint_for(path: str) -> str:
     return ""
 
 
+def _extract_syntax_error_line(reason: str):
+    """Parse 'syntax_error:line92:msg' -> (92, msg) or (None, None)."""
+    import re as _re
+    if not reason or not reason.startswith("syntax_error"):
+        return None, None
+    m = _re.search(r"line(\d+)", reason)
+    if not m:
+        return None, None
+    line_no = int(m.group(1))
+    msg = reason.split(":", 2)[-1] if ":" in reason else reason
+    return line_no, msg
+
+
+async def _repair_lines_ai(
+    target_path: str,
+    content: str,
+    error_line: int,
+    error_msg: str,
+    log,
+) -> str | None:
+    """Send only the broken lines to AI, splice back."""
+    lines = content.splitlines()
+    if not (1 <= error_line <= len(lines)):
+        return None
+    ctx_start = max(0, error_line - 11)
+    ctx_end = min(len(lines), error_line + 10)
+    block = "\n".join(lines[ctx_start:ctx_end])
+
+    prompt = (
+        f"You are fixing a Python syntax error.\n"
+        f"File: {target_path}\n"
+        f"Error at line {error_line}: {error_msg}\n\n"
+        f"Here is the block (lines {ctx_start+1} to {ctx_end}):\n"
+        f"---BEGIN---\n{block}\n---END---\n\n"
+        f"Return ONLY the corrected block, wrapped in ---BEGIN--- / ---END---. "
+        f"Do NOT add explanations. Keep the same code style."
+    )
+
+    try:
+        r = await groq_client.chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_tokens=2000,
+        )
+        txt = r.content or ""
+        b1 = txt.find("---BEGIN---")
+        b2 = txt.find("---END---")
+        if b1 == -1 or b2 == -1 or b2 <= b1:
+            return None
+        new_block = txt[b1 + 11:b2].strip("\n")
+        new_lines = new_block.splitlines()
+        merged = lines[:ctx_start] + new_lines + lines[ctx_end:]
+        return "\n".join(merged)
+    except Exception as e:
+        log.warning("line_repair_ai_failed", err=type(e).__name__)
+        return None
+
+
 async def _generate_one(
     *,
     pm_brief: dict,
@@ -636,6 +694,24 @@ async def _generate_one(
                 warnings.extend(vmeta.get("warnings", []))
                 return content, rag_tokens, warnings, "", ""
             last_reason = vreason
+
+            # Line-level repair for syntax errors (cheap, safe)
+            if vreason.startswith("syntax_error") and attempt == 1:
+                err_line, err_msg = _extract_syntax_error_line(vreason)
+                if err_line:
+                    log.info("line_repair_start", path=target_path, line=err_line)
+                    fixed = await _repair_lines_ai(
+                        target_path, content, err_line, err_msg, log
+                    )
+                    if fixed:
+                        vok2, vreason2, vmeta2 = _validate_file(target_path, fixed)
+                        if vok2:
+                            log.info("line_repair_ok", path=target_path)
+                            warnings.extend(vmeta2.get("warnings", []))
+                            return fixed, rag_tokens, warnings, "", ""
+                        else:
+                            log.warning("line_repair_still_bad", reason=vreason2)
+
             log.warning("coder_validate_failed", path=target_path,
                         reason=vreason, attempt=attempt)
 
