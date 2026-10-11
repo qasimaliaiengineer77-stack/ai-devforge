@@ -171,7 +171,7 @@ async def resolve_failure_endpoint(
         raise HTTPException(status_code=403, detail="not allowed")
 
     a = (body.action or "").strip().lower()
-    if a not in ("retry", "skip", "abort", "manual"):
+    if a not in ("retry", "skip", "abort", "manual", "delete"):
         raise HTTPException(status_code=400, detail="invalid action")
 
     if a == "abort":

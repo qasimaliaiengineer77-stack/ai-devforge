@@ -469,6 +469,28 @@ def _build_user_body(
 
 
 # --- Generate one file ---------------------------------------------------
+FILE_HINTS = {
+    "database.py": "MUST include: import sqlalchemy, Base class, backup_db() function",
+    "models.py": "MUST include: SQLAlchemy Base, every table needs id + created_at",
+    "schemas.py": "MUST include: from pydantic import BaseModel",
+    "auth.py": "MUST include: from passlib.context import CryptContext, bcrypt, hash_password(), verify_password()",
+    "main.py": "MUST include: from fastapi import FastAPI, at least one @app.get route",
+    "requirements.txt": "One package per line, no prose. Include: fastapi, uvicorn, sqlalchemy, pydantic, python-multipart, passlib, bcrypt, jinja2",
+    "templates/base.html": "Jinja2 syntax, extend base.html, Tailwind CDN",
+    "templates/login.html": "Jinja2 syntax, form with csrf_token",
+    "templates/dashboard.html": "Jinja2 syntax, extends base",
+    "static/style.css": "40+ lines of CSS, mobile-first",
+}
+
+
+def _hint_for(path: str) -> str:
+    """Return a short hint string for a file type."""
+    for key, hint in FILE_HINTS.items():
+        if path.endswith(key):
+            return hint
+    return ""
+
+
 async def _generate_one(
     *,
     pm_brief: dict,
@@ -479,7 +501,7 @@ async def _generate_one(
     user_id: str,
     trace_id: str,
     log,
-) -> tuple[Optional[str], int, list[str]]:
+) -> tuple[Optional[str], int, list[str], str, str]:
     """
     Generate one file. Returns (content_or_None, rag_tokens_used, warnings).
     """
@@ -542,7 +564,7 @@ async def _generate_one(
             vok, vreason, vmeta = _validate_file(target_path, content)
             if vok:
                 warnings.extend(vmeta.get("warnings", []))
-                return content, rag_tokens, warnings
+                return content, rag_tokens, warnings, "", ""
             last_reason = vreason
             log.warning("coder_validate_failed", path=target_path,
                         reason=vreason, attempt=attempt)
@@ -556,8 +578,8 @@ async def _generate_one(
         ]
 
     log.error("coder_file_failed", path=target_path, reason=last_reason)
-    # Preserve the last AI content even on failure (for manual edit UI)
-    return last_attempt_content, rag_tokens, warnings, last_reason
+    # 5-tuple: (None, tokens, warnings, reason, failed_content)
+    return None, rag_tokens, warnings, last_reason, (last_attempt_content or "")
 
 
 # --- Main entry point ---------------------------------------------------
@@ -595,7 +617,7 @@ async def run_coder_agent(
 
     for path in wanted:
         try:
-            content, rag_tokens, warnings, fail_reason = await _generate_one(
+            content, rag_tokens, warnings, fail_reason, failed_content = await _generate_one(
                 pm_brief=pm_brief, plan=plan, design=design,
                 target_path=path,
                 job_id=job_id, user_id=user_id, trace_id=trace_id,
@@ -603,7 +625,12 @@ async def run_coder_agent(
             )
             total_rag_tokens += rag_tokens
             if content is None:
-                failed.append({"path": path, "reason": fail_reason or "repair_exhausted"})
+                failed.append({
+                    "path": path,
+                    "reason": fail_reason or "repair_exhausted",
+                    "content": failed_content or "",
+                    "hint": _hint_for(path),
+                })
                 log.error("coder_file_unrecoverable", path=path, reason=fail_reason)
             else:
                 files_out.append({"path": path, "content": content})

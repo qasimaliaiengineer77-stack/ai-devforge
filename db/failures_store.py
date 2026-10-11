@@ -63,11 +63,13 @@ def get_pending(job_id):
                 JobFailure.resolved == 0,
             ).order_by(JobFailure.id)
         ).scalars().all()
+        from agents.coder_agent import _hint_for
         return [{
             "id": r.id, "file_path": r.file_path,
             "error_code": r.error_code, "error_message": r.error_message,
             "severity": r.severity, "confidence": r.confidence,
             "ai_content": r.ai_content,
+            "hint": _hint_for(r.file_path or ""),
         } for r in rows]
     finally:
         db.close()
