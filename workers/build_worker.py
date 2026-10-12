@@ -172,7 +172,7 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                 except Exception:
                     pass
 
-                import aiosqlite
+        import aiosqlite
         conn = await aiosqlite.connect("checkpoints.db")
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -349,3 +349,5 @@ class WorkerSettings:
 
     on_startup = on_startup
     on_shutdown = on_shutdown
+
+
