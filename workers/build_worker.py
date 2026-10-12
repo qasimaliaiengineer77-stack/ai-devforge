@@ -155,8 +155,27 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
             trace_id=trace_id,
         )
 
-        # Create SQLite checkpointer (persists state across process restarts)
+        # Create SQLite checkpointer (WAL mode + integrity check for crash safety)
+        from pathlib import Path as _Path
+        _cp = _Path("checkpoints.db")
+
+        # Check if existing DB is corrupt
+        if _cp.exists():
+            try:
+                _test = sqlite3.connect(str(_cp), check_same_thread=False)
+                _test.execute("PRAGMA integrity_check").fetchone()
+                _test.close()
+            except Exception as _e:
+                logger.warning("checkpointer_corrupt_deleting", err=str(_e))
+                try:
+                    _cp.unlink()
+                except Exception:
+                    pass
+
         conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         checkpointer = SqliteSaver(conn)
         checkpointer.setup()
 
