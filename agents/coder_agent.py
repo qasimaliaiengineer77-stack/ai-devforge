@@ -301,6 +301,63 @@ def _strip_code_fences(s: str) -> str:
     return t
 
 
+WRONG_IMPORTS = {
+    "from fastapi.middleware.sessions import SessionMiddleware":
+        "from starlette.middleware.sessions import SessionMiddleware",
+    "from fastapi.middleware.cors import CORSMiddleware":
+        "from fastapi.middleware.cors import CORSMiddleware",  # actually valid, skip
+    "from fastapi.responses import HTMLResponse":  # valid
+        "from fastapi.responses import HTMLResponse",
+    "from fastapi.templating import Jinja2Templates":  # valid
+        "from fastapi.templating import Jinja2Templates",
+    "from fastapi.security import OAuth2PasswordBearer":  # valid
+        "from fastapi.security import OAuth2PasswordBearer",
+    "import fastapi.middleware.sessions":
+        "import starlette.middleware.sessions",
+    "from fastapi.middleware.trustedhost import TrustedHostMiddleware":
+        "from starlette.middleware.trustedhost import TrustedHostMiddleware",
+    "from fastapi.middleware.gzip import GZipMiddleware":
+        "from starlette.middleware.gzip import GZipMiddleware",
+    "from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware":
+        "from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware",
+}
+
+# Only these need fixing (the wrong ones)
+_WRONG_IMPORT_MAP = {
+    "from fastapi.middleware.sessions import":
+        "from starlette.middleware.sessions import",
+    "import fastapi.middleware.sessions":
+        "import starlette.middleware.sessions",
+    "from fastapi.middleware.trustedhost import":
+        "from starlette.middleware.trustedhost import",
+    "from fastapi.middleware.gzip import":
+        "from starlette.middleware.gzip import",
+    "from fastapi.middleware.httpsredirect import":
+        "from starlette.middleware.httpsredirect import",
+}
+
+
+def _autocorrect_imports(content: str) -> tuple[str, list[str]]:
+    """Fix known wrong imports. Returns (fixed_content, fixes_applied)."""
+    fixes = []
+    for wrong, right in _WRONG_IMPORT_MAP.items():
+        if wrong in content:
+            content = content.replace(wrong, right)
+            fixes.append(wrong + " -> " + right)
+    return content, fixes
+
+
+def _try_wrap_html(raw: str) -> dict | None:
+    """If raw looks like HTML, wrap it as a coder JSON response."""
+    t = (raw or "").strip()
+    if not t:
+        return None
+    low = t.lower()
+    if low.startswith("<!doctype") or low.startswith("<html") or low.startswith("{%"):
+        return {"path": "", "content": t}  # path will be filled by caller
+    return None
+
+
 def _parse_coder_output(raw: str) -> tuple[bool, str, dict]:
     """
     Return (ok, reason, data) where data = {"path": str, "content": str}.
@@ -361,6 +418,11 @@ def _parse_coder_output(raw: str) -> tuple[bool, str, dict]:
                     return ok, reason, result
             except Exception:
                 continue
+
+    # Last resort: if content looks like HTML, wrap it
+    html_wrap = _try_wrap_html(raw)
+    if html_wrap is not None:
+        return True, "wrapped_html", html_wrap
 
     return False, "not_json:no_valid_json_found", {}
 
@@ -456,6 +518,12 @@ def _validate_file(path: str, content: str) -> tuple[bool, str, dict]:
     Returns (ok, reason, meta).
     """
     meta = {"warnings": []}
+
+    # Auto-correct known wrong imports (Python files only)
+    if path.endswith(".py"):
+        content, fixes = _autocorrect_imports(content)
+        for fx in fixes:
+            meta["warnings"].append("autocorrect:" + fx)
 
     # 2 & 3: path safety
     try:

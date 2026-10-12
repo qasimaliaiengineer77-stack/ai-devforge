@@ -165,9 +165,9 @@ async def chat(
     primary_cap = cfg.PRIMARY_MAX_TOKENS if max_tokens is None else max_tokens
     fallback_cap = min(primary_cap, cfg.FALLBACK_MAX_TOKENS)
 
+    # Skip 20b fallback (flaky) - jump straight to OpenRouter if 120b fails
     models_to_try = [
         (cfg.PRIMARY_MODEL, primary_cap, False),
-        (cfg.FALLBACK_MODEL, fallback_cap, True),
     ]
 
     last_exc: Optional[Exception] = None
