@@ -82,20 +82,26 @@ def _after_coder(state: WorkflowState) -> str:
     return "tester"
 
 
-def _after_tester(state: WorkflowState) -> str:
-    """
-    pass  -> improver
-    fail  -> coder (if attempts < MAX_CODER_ATTEMPTS), else abort
-    """
+def _after_tester(state):
     result = state.get("test_result") or "unknown"
     if result == "pass":
         return "improver"
 
+    # If files are all generated (no failed_files) but Tester failed,
+    # retrying Coder won't help - same prompt = same output.
+    # Stop and let user decide (failure panel will show).
+    failed_files = state.get("failed_files") or []
+    code_files = state.get("code_files") or []
+    if not failed_files and len(code_files) > 0:
+        logger.warning("tester_fail_but_files_ok_abort",
+                       files=len(code_files))
+        return "abort"
+
+    # Only retry Coder if files were actually missing/failed
     attempts = int(state.get("coder_attempts", 0) or 0)
     if attempts < MAX_CODER_ATTEMPTS:
         return "coder"
     return "abort"
-
 
 def _after_improver(state: WorkflowState) -> str:
     """
