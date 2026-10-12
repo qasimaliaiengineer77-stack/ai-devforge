@@ -216,6 +216,9 @@ def add_error(
     if attempt is not None:
         entry["attempt"] = int(attempt)
     errors.append(entry)
+    # Cap errors list to prevent memory leak (keep last 50)
+    if len(errors) > 50:
+        errors = errors[-50:]
     return errors
 
 
