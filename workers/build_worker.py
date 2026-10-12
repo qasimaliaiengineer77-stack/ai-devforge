@@ -1,5 +1,5 @@
-r"""
-AI Software Company — ARQ build worker (Step 17)
+﻿r"""
+AI Software Company â€” ARQ build worker (Step 17)
 
 Architecture references:
   Section 26  ARQ job queue, max_concurrent_builds=3, job_timeout=15min
@@ -10,7 +10,7 @@ Architecture references:
 Flow:
   1. ARQ delivers (ctx, job_id) from the queue.
   2. We load the job row, mark it "building".
-  3. We build the LangGraph StateGraph and astream it — each node's
+  3. We build the LangGraph StateGraph and astream it â€” each node's
      partial updates are merged into the running state, and the jobs
      table is updated after every node so the UI can display progress.
   4. When the graph reaches the approval node (or an abort), the worker
@@ -40,7 +40,7 @@ from db import jobs_store
 from db import failures_store
 from graph.state import new_workflow_state
 from graph.workflow import build_graph
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from observability.logger import bind_job, get_logger
 from workers.queue import _redis_settings_from_url
 
@@ -84,7 +84,7 @@ def _update_job_from_state(
         if state.get("approval_status") == "pending":
             status = "awaiting_approval"
         if state.get("finished_at"):
-            # Deploy completed inside the workflow (not typical — deploy
+            # Deploy completed inside the workflow (not typical â€” deploy
             # is normally a separate resume step).
             status = "done"
 
@@ -172,12 +172,13 @@ async def build_workflow(ctx: dict, job_id: str) -> dict:
                 except Exception:
                     pass
 
-        conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+                import aiosqlite
+        conn = await aiosqlite.connect("checkpoints.db")
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=30000")
-        checkpointer = SqliteSaver(conn)
-        checkpointer.setup()
+        checkpointer = AsyncSqliteSaver(conn)
+        await checkpointer.setup()
 
         graph = build_graph(checkpointer=checkpointer)
         config = {"configurable": {"thread_id": job_id}}
