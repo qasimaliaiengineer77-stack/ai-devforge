@@ -249,6 +249,45 @@ async def chat(
 
         logger.warning("groq exhausted retries for model=%s, trying next", model)
 
+    # ---- Fallback 1: Gemini ----
+    try:
+        from ai.gemini_client import chat as gemini_chat
+        logger.warning("groq_exhausted_trying_gemini")
+        g = await gemini_chat(messages, temperature=temp, max_tokens=primary_cap)
+        if g.content.strip():
+            return GroqResult(
+                content=g.content,
+                model="gemini/" + str(g.model),
+                input_tokens=g.input_tokens,
+                output_tokens=g.output_tokens,
+                total_tokens=g.total_tokens,
+                latency_ms=g.latency_ms,
+                attempts=g.attempts,
+                used_fallback=True,
+            )
+    except Exception as gexc:
+        logger.error("gemini_fallback_failed err=%s", redact(gexc))
+
+    # ---- Fallback 2: OpenRouter (free models) ----
+    try:
+        from ai.openrouter_client import chat as or_chat
+        logger.warning("gemini_exhausted_trying_openrouter")
+        orr = await or_chat(messages, temperature=temp, max_tokens=primary_cap)
+        if orr.content.strip():
+            return GroqResult(
+                content=orr.content,
+                model=orr.model,
+                input_tokens=orr.input_tokens,
+                output_tokens=orr.output_tokens,
+                total_tokens=orr.total_tokens,
+                latency_ms=orr.latency_ms,
+                attempts=orr.attempts,
+                used_fallback=True,
+            )
+    except Exception as oexc:
+        logger.error("openrouter_fallback_failed err=%s", redact(oexc))
+
     raise RuntimeError(
-        f"Groq call failed after {total_attempts} attempts: {redact(last_exc)}"
+        f"All providers failed. Groq: {redact(last_exc)}; "
+        f"Gemini: {redact(gexc)}; OpenRouter: {redact(oexc)}"
     )
