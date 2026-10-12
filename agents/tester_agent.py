@@ -153,12 +153,16 @@ async def run_tester_agent(
             l1=result.l1_ok, l2=result.l2_ok, l3=result.l3_ok,
         )
 
-    # Cleanup sandbox workspace (image cleanup already done in docker_runner)
-    try:
-        cleanup_sandbox(job_id, root)
-        result.cleanup_done = True
-    except Exception as exc:
-        log.warning("sandbox_cleanup_failed", err=str(exc))
+    # Cleanup sandbox workspace (skip if KEEP_WORKSPACE=1 for debugging)
+    import os as _os
+    if _os.getenv("KEEP_WORKSPACE", "0") == "1":
+        log.info("sandbox_workspace_kept", path=str(root / job_id))
+    else:
+        try:
+            cleanup_sandbox(job_id, root)
+            result.cleanup_done = True
+        except Exception as exc:
+            log.warning("sandbox_cleanup_failed", err=str(exc))
 
     result.duration_ms = int((time.perf_counter() - t0) * 1000)
     log.info(
