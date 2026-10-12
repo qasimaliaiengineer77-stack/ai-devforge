@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI Software Company — ChromaDB HTTP client wrapper (Step 10)
 
 Architecture references:

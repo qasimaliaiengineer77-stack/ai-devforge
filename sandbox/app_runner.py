@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI Software Company â€” Generated app Docker runner (Step 13)
 
 Architecture references:

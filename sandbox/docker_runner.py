@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI Software Company â€” Docker sandbox runner (Step 12)
 
 Architecture references:

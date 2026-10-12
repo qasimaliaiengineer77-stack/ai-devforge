@@ -1,4 +1,4 @@
-﻿r"""
+r"""
 AI Software Company â€” ARQ build worker (Step 17)
 
 Architecture references:
