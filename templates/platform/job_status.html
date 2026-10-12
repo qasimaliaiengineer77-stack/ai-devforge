@@ -318,6 +318,7 @@
             "rolled_back": "bg-red-500/10 text-red-300 border-red-500/20",
             "rejected": "bg-red-500/10 text-red-300 border-red-500/20",
             "awaiting_approval": "bg-yellow-500/10 text-yellow-300 border-yellow-500/20",
+            "awaiting_user_input": "bg-orange-500/10 text-orange-300 border-orange-500/20",
             "building": "bg-indigo-500/10 text-indigo-300 border-indigo-500/20",
             "testing": "bg-cyan-500/10 text-cyan-300 border-cyan-500/20",
             "improving": "bg-purple-500/10 text-purple-300 border-purple-500/20",
@@ -674,10 +675,11 @@
             const r = await fetch("/failures/" + encodeURIComponent(JOB_ID), { credentials: "same-origin" });
             if (!r.ok) return;
             const j = await r.json();
-            if (!j.count) {
+            if (!j || !j.count) {
                 $("failure-panel").classList.add("hidden");
                 return;
             }
+            // Render failures and show panel
             renderFailures(j.failures);
             $("failure-panel").classList.remove("hidden");
         } catch (e) {}
@@ -823,8 +825,9 @@
     poll();
     loadFailures();
     const timer = setInterval(() => {
-        if (terminal) { clearInterval(timer); }
-        else { poll(); loadFailures(); }
+        // Always load failures (even if terminal) so panel shows correctly
+        if (!terminal) poll();
+        loadFailures();
     }, 3000);
 })();
 </script>
