@@ -712,8 +712,9 @@
                 <div class="text-xs text-[color:var(--text-muted)] font-mono mb-3 break-words">${(f.error_message || "").slice(0, 250)}</div>
                 <div class="flex items-center gap-2 flex-wrap">
                     <button class="btn btn-primary text-xs px-3 py-1.5" data-act="retry" data-id="${f.id}">
-                        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Retry
+                        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Retry with AI
                     </button>
+                    ${f.file_path && f.file_path !== "(build)" ? `
                     <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="edit" data-id="${f.id}" data-path="${f.file_path}">
                         <i data-lucide="pencil" style="width:12px;height:12px;"></i> Manual Edit
                     </button>
@@ -723,6 +724,7 @@
                     <button class="btn btn-ghost text-xs px-3 py-1.5" data-act="skip" data-id="${f.id}">
                         <i data-lucide="skip-forward" style="width:12px;height:12px;"></i> Skip
                     </button>
+                    ` : ""}
                     <button class="btn btn-danger text-xs px-3 py-1.5" data-act="abort" data-id="${f.id}">
                         <i data-lucide="x" style="width:12px;height:12px;"></i> Abort
                     </button>
