@@ -54,8 +54,8 @@ logger = get_logger("sandbox.docker_runner")
 
 # --- Config --------------------------------------------------------------
 BASE_IMAGE = "python:3.12-slim"
-PHASE1_TIMEOUT_S = 120        # docker build (pip install)
-PHASE2_TIMEOUT_S = 30         # tests
+PHASE1_TIMEOUT_S = 420        # docker build (pip install, 7 min for slow internet)
+PHASE2_TIMEOUT_S = 90         # tests (1.5 min)
 KILL_WAIT_S = 5               # after timeout, how long to wait for kill
 CONTAINER_MEMORY = "256m"
 CONTAINER_CPUS = "0.5"
@@ -66,7 +66,7 @@ CONTAINER_USER = "1000:1000"  # non-root
 DEFAULT_DOCKERFILE = """FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt httpx
+RUN --mount=type=cache,target=/root/.cache/pip pip install --no-cache-dir --timeout 1200 -r requirements.txt
 COPY . .
 EXPOSE 8000
 CMD ["python", "test_runner.py"]
