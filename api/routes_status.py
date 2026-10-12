@@ -196,8 +196,24 @@ async def resolve_failure_endpoint(
                error_agent=None, error_code=None,
                error_message=None, error_attempt=None)
 
-    # For "manual": build state update with corrected content
+    # For "retry": read the failure message and store as hint file
     resume_value: dict = {}
+    if a == "retry" and resolved.get("file_path") == "(build)":
+        # This is a job-level failure - pass the tester hint to coder
+        hint_text = resolved.get("error_message") or ""
+        import json as _json
+        try:
+            from pathlib import Path as _P
+            hint_dir = _P("output") / job_id
+            hint_dir.mkdir(parents=True, exist_ok=True)
+            (hint_dir / "_retry_hint.txt").write_text(
+                hint_text, encoding="utf-8"
+            )
+            print(f"[retry] hint saved: {hint_text[:80]}")
+        except Exception as _e:
+            print(f"[retry] hint save failed: {_e}")
+
+    # For "manual": build state update with corrected content
     if a == "manual" and body.manual_content:
         # Find the failed file path and update it in code_files
         from db.jobs_store import get_job as _get_job

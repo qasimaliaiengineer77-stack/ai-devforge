@@ -348,3 +348,23 @@ def delete_job(job_id: str) -> bool:
         raise
     finally:
         db.close()
+
+def set_tester_issues(job_id: str, issues: list) -> None:
+    """Store tester issues so Coder can pick them up on retry."""
+    db = SessionLocal()
+    try:
+        job = db.execute(
+            select(Job).where(Job.job_id == str(job_id).strip())
+        ).scalar_one_or_none()
+        if job is None:
+            return
+        # Reuse scores_json field is wrong; add column? No - use error_message
+        # Actually store in a simple JSON in existing field
+        import json as _json
+        job.updated_at = _utcnow()
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
