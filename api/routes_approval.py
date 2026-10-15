@@ -44,6 +44,70 @@ from security.approval import (
     get_approval,
 )
 
+
+
+# --- Trigger deploy after approval --------------------------------------
+async def _trigger_deploy_after_approval(job_id: str, db) -> dict:
+    """Rebuild WorkflowState from disk files + DB, then run deploy_node."""
+    import json as _json
+    from pathlib import Path as _P
+
+    # 1. Load job from DB
+    from db.jobs_store import get_job
+    job = get_job(job_id)
+    if job is None:
+        return {"trigger": "deploy", "status": "skipped", "reason": "job_not_found"}
+
+    # 2. Read all files from disk
+    out_root = _P("output") / job_id
+    if not out_root.exists():
+        return {"trigger": "deploy", "status": "skipped", "reason": "no_output_dir"}
+
+    code_files = []
+    for p in out_root.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = str(p.relative_to(out_root)).replace("\\", "/")
+        if rel in ("Dockerfile", "test_runner.py"):
+            continue
+        try:
+            code_files.append({"path": rel, "content": p.read_text(encoding="utf-8", errors="replace")})
+        except Exception:
+            continue
+
+    if not code_files:
+        return {"trigger": "deploy", "status": "skipped", "reason": "no_files"}
+
+    # 3. Rebuild minimal WorkflowState
+    try:
+        features = _json.loads(job.features_json) if job.features_json else []
+    except Exception:
+        features = []
+
+    state = {
+        "job_id": job_id,
+        "user_id": str(job.user_id),
+        "trace_id": job_id,
+        "requirement": job.requirement,
+        "app_name": (features[0] if features else "App"),
+        "features": features,
+        "code_files": code_files,
+        "approved": True,
+        "approval_status": "approved",
+    }
+
+    # 4. Run deploy_node
+    from graph.nodes import deploy_node
+    result = await deploy_node(state)
+    return {
+        "trigger": "deploy",
+        "status": "ok",
+        "github_url": result.get("github_url"),
+        "live_url": result.get("live_url"),
+        "port": result.get("port"),
+    }
+
+
 router = APIRouter(tags=["approval"])
 
 
@@ -103,12 +167,26 @@ async def approve_job(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
 
+    # 3.5 ? If approved, trigger deploy (non-blocking)
+    deploy_result = None
+    if body.decision == "yes":
+        try:
+            deploy_result = await _trigger_deploy_after_approval(job_id, db)
+        except Exception as exc:
+            import logging as _log
+            _log.getLogger("approval").warning(
+                "deploy_after_approval_failed job=%s err=%s", job_id, type(exc).__name__
+            )
+            deploy_result = {"trigger": "deploy", "status": "failed",
+                             "reason": type(exc).__name__}
+
     return {
         "job_id": req.job_id,
         "status": req.status,
         "decision": req.decision,
         "decided_by": req.decided_by,
         "decided_at": req.decided_at.isoformat() if req.decided_at else None,
+        "deploy": deploy_result,
     }
 
 

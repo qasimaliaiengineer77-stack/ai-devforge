@@ -31,7 +31,7 @@ def redact(text: Any) -> str:
     return s
 
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 MAX_RETRIES = 2
 
 
@@ -93,10 +93,13 @@ async def chat(
                 "temperature": temp,
                 "max_output_tokens": max_tok,
             }
-            resp = await asyncio.to_thread(
-                model.generate_content,
-                prompt,
-                generation_config=gen_config,
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    model.generate_content,
+                    prompt,
+                    generation_config=gen_config,
+                ),
+                timeout=60,
             )
             latency_ms = int((time.perf_counter() - t0) * 1000)
             text = ""
@@ -121,6 +124,9 @@ async def chat(
                 latency_ms=latency_ms,
                 attempts=attempt,
             )
+        except (asyncio.TimeoutError, TimeoutError):
+            logger.warning("gemini timeout attempt=%d after 60s", attempt)
+            raise RuntimeError("gemini_timeout_60s")
         except Exception as exc:
             last_exc = exc
             wait = min(2 ** attempt, 10)

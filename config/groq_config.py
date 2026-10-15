@@ -64,7 +64,7 @@ INTER_CALL_SLEEP_SECONDS = float(os.getenv("GROQ_INTER_CALL_SLEEP_SECONDS", "2")
 # Retry policy
 MAX_RETRIES_PER_MODEL = int(os.getenv("GROQ_MAX_RETRIES_PER_MODEL", "3"))
 BACKOFF_BASE_SECONDS = float(os.getenv("GROQ_BACKOFF_BASE_SECONDS", "2"))
-BACKOFF_MAX_SECONDS = float(os.getenv("GROQ_BACKOFF_MAX_SECONDS", "60"))
+BACKOFF_MAX_SECONDS = float(os.getenv("GROQ_BACKOFF_MAX_SECONDS", "1800"))
 
 # --- Token budget (Coder, per Section 6) ----------------------------------
 CODER_TPM_BUDGET = 8000

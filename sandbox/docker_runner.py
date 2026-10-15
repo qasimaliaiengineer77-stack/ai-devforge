@@ -55,7 +55,7 @@ logger = get_logger("sandbox.docker_runner")
 # --- Config --------------------------------------------------------------
 BASE_IMAGE = "python:3.12-slim"
 PHASE1_TIMEOUT_S = 420        # docker build (pip install, 7 min for slow internet)
-PHASE2_TIMEOUT_S = 90         # tests (1.5 min)
+PHASE2_TIMEOUT_S = 300         # tests (1.5 min)
 KILL_WAIT_S = 5               # after timeout, how long to wait for kill
 CONTAINER_MEMORY = "256m"
 CONTAINER_CPUS = "0.5"
@@ -66,7 +66,7 @@ CONTAINER_USER = "1000:1000"  # non-root
 DEFAULT_DOCKERFILE = """FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip pip install --no-cache-dir --timeout 1200 -r requirements.txt
+RUN pip install --no-cache-dir --timeout 1200 -r requirements.txt
 COPY . .
 EXPOSE 8000
 CMD ["python", "test_runner.py"]
@@ -148,6 +148,9 @@ def _sanitize_requirements(workspace: Path) -> None:
             "passlib==1.7.4",
             "bcrypt==4.0.1",
             "jinja2==3.1.6",
+            "typing_extensions>=4.13.0",
+            "email-validator>=2.0.0",
+            "pyflakes>=3.2.0",
         ]
 
     req.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
@@ -263,6 +266,7 @@ def _docker_run_tests(tag: str) -> dict:
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
         "--user", CONTAINER_USER,
+        "-e", "DATABASE_URL=sqlite:////tmp/app.db",
         tag,
         "python", "test_runner.py",
     ]

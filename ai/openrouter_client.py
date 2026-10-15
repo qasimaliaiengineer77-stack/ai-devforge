@@ -17,6 +17,9 @@ logger = logging.getLogger("ai.openrouter")
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+
+# DeepSeek V4.1 Flash - primary coding model (free)
+DEEPSEEK_PIN = "deepseek/deepseek-v4.1-flash:free"
 MAX_RETRIES = 2
 
 # Cache for free model IDs (refreshed once per session)
@@ -72,7 +75,7 @@ async def _fetch_free_models() -> list[str]:
                 else:
                     other_free.append(mid)
 
-            _free_models_cache = free_ids + other_free
+            _free_models_cache = [DEEPSEEK_PIN] + free_ids + other_free
             logger.info("openrouter_free_models_fetched count=%d",
                         len(_free_models_cache))
             return _free_models_cache

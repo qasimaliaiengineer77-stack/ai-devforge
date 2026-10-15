@@ -1,0 +1,12 @@
+fastapi==0.142.2
+starlette==1.6.0
+sqlalchemy==2.0.36
+pydantic==2.10.4
+python-multipart==0.0.32
+passlib==1.7.4
+bcrypt==4.0.1
+jinja2==3.1.6
+httpx
+typing_extensions>=4.13.0
+email-validator>=2.0.0
+pyflakes>=3.2.0

@@ -73,3 +73,18 @@ chroma/
 *.db-wal
 # LangGraph checkpoints
 checkpoints.db*
+# Backup files (never commit)
+*.bak_*
+*.bak2
+*.bak3
+_PASSED_*/
+_RUN_*/
+results.md
+results_5of5_FINAL.md
+# Scratch scripts
+test_build.py
+test_full.py
+test_matrix.py
+fix_*.py
+mk_*.py
+diag_*.py

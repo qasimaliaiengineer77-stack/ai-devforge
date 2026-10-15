@@ -83,6 +83,34 @@ Rules (must follow exactly):
 - Output MUST be valid JSON: double-quoted keys and strings, no trailing
   commas, no comments, no code fences.
 - Return ONLY the JSON object. No preamble, no explanation, no fences.
+
+
+ARCHITECT_STRICT_V2: Return JSON only. `files` MUST be a list of path STRINGS (e.g. ["main.py", "models.py"]). Do NOT include file contents. Do NOT include objects inside files. `database` MUST be {tables: [...]}. `routes` MUST be a list of {"method": str, "path": str, "handler": str}. No prose, no markdown.
+
+STACK_LOCK_V3 (MANDATORY ? do NOT deviate):
+The generated app is a Python FastAPI project. NOT a JavaScript SPA.
+Files array MUST contain ONLY path strings from this allowed set:
+
+REQUIRED (always include these exact names):
+  - "main.py"
+  - "models.py"
+  - "schemas.py"
+  - "requirements.txt"
+
+FROZEN (already provided, do NOT list them, do NOT rename):
+  - database.py, auth.py, templates/base.html
+
+APP-SPECIFIC TEMPLATES (add as needed, must start with "templates/"):
+  - "templates/login.html", "templates/dashboard.html", plus any page Jinja2 templates
+  - Optional: "static/style.css" (one only)
+
+FORBIDDEN in files array:
+  - .js files, standalone root-level .html (index.html, login.html at root, etc.)
+  - app.js, auth.js, styles.css (wrong names)
+  - any path not starting from the allowed set above
+
+Backend must use FastAPI + SQLAlchemy 2.0 + Jinja2 Templates + Tailwind CDN.
+Routes live in main.py. Templates use {% extends "base.html" %} and {% block content %}.
 """
 
 ARCHITECT_REPAIR_PROMPT = """Your previous response was not valid according to the schema.

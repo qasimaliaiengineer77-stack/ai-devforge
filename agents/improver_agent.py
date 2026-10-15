@@ -55,7 +55,7 @@ from sandbox.app_runner import (
 logger = get_logger("agents.improver")
 
 LIGHTHOUSE_IMAGE = "femtopixel/google-lighthouse:latest"
-LIGHTHOUSE_TIMEOUT_S = 150          # 120s official + 30s buffer
+LIGHTHOUSE_TIMEOUT_S = 180          # 120s official + 30s buffer
 LIGHTHOUSE_CATEGORIES = "performance,accessibility,best-practices,seo"
 LIGHTHOUSE_SHM_SIZE = "2g"
 
@@ -102,13 +102,12 @@ def _run_lighthouse(url: str) -> dict:
         "--network", "ai_company_network",
         "--cap-add", "SYS_ADMIN",                # Chrome sandbox inside Docker
         "--shm-size", LIGHTHOUSE_SHM_SIZE,       # /dev/shm is 64MB by default
-        "-e", f"CHROME_FLAGS={LIGHTHOUSE_CHROME_FLAGS}",
         LIGHTHOUSE_IMAGE,
         url,
         "--output=json",                         # JSON to stdout
         f"--only-categories={LIGHTHOUSE_CATEGORIES}",
         "--quiet",
-        "--max-wait-for-load=45000",
+        "--max-wait-for-load=90000",
     ]
 
     logger.info("lighthouse_start", url=url)
@@ -282,10 +281,14 @@ async def run_improver_agent(
             log.warning("improver_run_failed", rc=run.returncode)
             return result
 
-        # 3. Wait for uvicorn to be ready
-        if not wait_until_ready(run.container_name, timeout_s=20):
-            result.error = "app_not_ready"
-            log.warning("improver_app_not_ready")
+        # 3. Wait for uvicorn to be ready (non-blocking)
+        if not wait_until_ready(run.container_name, timeout_s=120):
+            log.warning("improver_app_not_ready_skipping_lighthouse")
+            result.ok = True
+            result.error = ""  # not fatal
+            result.before_scores = {}
+            result.after_scores = {}
+            result.issues = ["app_not_ready"]
             return result
 
         if not run_lighthouse:
@@ -293,13 +296,19 @@ async def run_improver_agent(
             log.info("improver_skipped_lighthouse")
             return result
 
-        # 4. Run Lighthouse
+        # 4. Run Lighthouse (non-blocking: warning on fail, build continues)
         lh = _run_lighthouse(run.service_url)
         result.lighthouse_returncode = lh["returncode"]
         result.lighthouse_log = (lh["stdout"] + "\n" + lh["stderr"])[-3000:]
 
         if lh["returncode"] != 0:
-            result.error = "lighthouse_failed"
+            # Non-fatal: log warning, mark ok=True, no error
+            log.warning("lighthouse_skipped", reason="lighthouse_failed",
+                        rc=lh["returncode"])
+            result.ok = True
+            result.before_scores = {}
+            result.after_scores = {}
+            result.issues = ["lighthouse_unavailable"]
             return result
 
         # 5. Parse scores

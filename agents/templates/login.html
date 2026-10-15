@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block nav_logo %}A{% endblock %}
+{% block nav_title %}App{% endblock %}
+
+{% block content %}
+<div class="mx-auto mt-16 max-w-md animate-slide-up">
+    <div class="glass rounded-2xl p-8 shadow-2xl">
+        <div class="mb-8 text-center">
+            <h1 class="text-3xl font-bold tracking-tight text-slate-50">Welcome back</h1>
+            <p class="mt-2 text-sm text-slate-400">Sign in to continue to your account</p>
+        </div>
+
+        {% if error %}
+        <div class="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="/login" class="space-y-5">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-300">Email</label>
+                <input type="email" name="email" required autocomplete="email"
+                       placeholder="you@example.com"
+                       class="w-full rounded-lg border border-slate-700/60 bg-slate-900/60 px-4 py-3 text-slate-100 placeholder-slate-500 transition focus:border-indigo-500/60" />
+            </div>
+
+            <div>
+                <label class="mb-2 block text-sm font-medium text-slate-300">Password</label>
+                <input type="password" name="password" required autocomplete="current-password"
+                       placeholder="????????"
+                       class="w-full rounded-lg border border-slate-700/60 bg-slate-900/60 px-4 py-3 text-slate-100 placeholder-slate-500 transition focus:border-indigo-500/60" />
+            </div>
+
+            <button type="submit"
+                    class="w-full rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 py-3 font-medium text-white shadow-lg shadow-indigo-500/30 transition hover:shadow-xl hover:shadow-indigo-500/40 hover:scale-[1.01] active:scale-[0.99]">
+                Sign in
+            </button>
+        </form>
+
+        <p class="mt-6 text-center text-sm text-slate-400">
+            Don't have an account?
+            <a href="/register" class="font-medium text-indigo-400 hover:text-indigo-300 transition">Create one</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

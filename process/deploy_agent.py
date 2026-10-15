@@ -236,6 +236,27 @@ def _push_to_github(
     return result
 
 
+
+
+# --- Ensure git repo is initialized -------------------------------------
+def _ensure_git_repo(repo_path) -> bool:
+    """Make sure the repo path is a git repo. Init if missing."""
+    from pathlib import Path as _P
+    import subprocess as _sp
+    p = _P(repo_path)
+    if (p / ".git").exists():
+        return True
+    try:
+        _sp.run(["git", "init"], cwd=str(p), capture_output=True, timeout=15)
+        _sp.run(["git", "config", "user.email", "ai-company@local"], cwd=str(p),
+                capture_output=True, timeout=10)
+        _sp.run(["git", "config", "user.name", "AI Company"], cwd=str(p),
+                capture_output=True, timeout=10)
+        return True
+    except Exception:
+        return False
+
+
 # --- Main entry point ---------------------------------------------------
 async def deploy(
     files: list[dict],

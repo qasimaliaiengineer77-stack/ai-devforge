@@ -31,6 +31,8 @@ Checks applied per file (Section 10, checks 1-8; 9-10 run in Tester Step 12):
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import ast
 import json
 import re
@@ -38,6 +40,13 @@ from typing import Optional
 
 from ai import groq_client
 from config import groq_config as cfg
+from pydantic_fix import fix_pydantic_v1_kwargs as _fix_pyd
+from cfgfix import fix_config_class as _fix_cfg
+from preflight import preflight_fix as _preflight_fix
+from autoimport import fix_missing_imports as _fix_missing_imports
+from clashfix import fix_field_type_clash as _fix_clash
+from goodreq import ensure_requirements as _ensure_req
+from agents.template_exports import format_for_prompt as _tpl_frozen
 from observability.cost_tracker import record_call
 from observability.logger import bind_job, get_logger
 from rag.retriever import format_for_prompt, retrieve_for_topics
@@ -274,7 +283,22 @@ passlib==1.7.4
 bcrypt==4.0.1
 jinja2==3.1.6
 httpx
+typing_extensions>=4.13.0
+email-validator>=2.0.0
+pyflakes>=3.2.0
 """
+
+
+# Load frozen templates
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+# Queued files to append after main.py
+_ROUTES_APPENDED: list = []
+_AUTH_TEMPLATE_LOADED = (_TEMPLATES_DIR / "auth.py").read_text(encoding="utf-8") if (_TEMPLATES_DIR / "auth.py").exists() else ""
+_MAIN_TEMPLATE_LOADED = (_TEMPLATES_DIR / "main.py").read_text(encoding="utf-8") if (_TEMPLATES_DIR / "main.py").exists() else ""
+_DB_TEMPLATE_LOADED = (_TEMPLATES_DIR / "database.py").read_text(encoding="utf-8") if (_TEMPLATES_DIR / "database.py").exists() else ""
+_BASE_TEMPLATE_LOADED = (_TEMPLATES_DIR / "base.html").read_text(encoding="utf-8") if (_TEMPLATES_DIR / "base.html").exists() else ""
+_LOGIN_TEMPLATE_LOADED = (_TEMPLATES_DIR / "login.html").read_text(encoding="utf-8") if (_TEMPLATES_DIR / "login.html").exists() else ""
 
 
 class CoderAgentError(RuntimeError):
@@ -547,7 +571,13 @@ def _validate_file(path: str, content: str) -> tuple[bool, str, dict]:
 
     # 5.5: minimum file size (real code, not a stub)
     if kind == "python":
-        min_bytes = 2000
+        # Per-file threshold: schemas.py can be small (Pydantic models)
+        if target_path.endswith("schemas.py"):
+            min_bytes = 400
+        elif target_path.endswith("database.py") or target_path.endswith("auth.py"):
+            min_bytes = 400  # frozen templates
+        else:
+            min_bytes = 1500
     elif kind == "html":
         min_bytes = 1500
     elif kind == "css":
@@ -587,7 +617,9 @@ def _build_user_body(
         "technical_plan": plan,
         "design_brief": design,
         "target_path": target_path,
+        "file_requirements": _hint_for(target_path),
         "existing_project": [f for f in plan.get("files", [])],
+        "frozen_modules": _tpl_frozen(),
     }
     body = json.dumps(payload, ensure_ascii=False, indent=2)
     if rag_context:
@@ -692,6 +724,31 @@ async def _generate_one(
     if target_path == "requirements.txt":
         log.info("coder_fixed_file", path=target_path)
         return FIXED_REQUIREMENTS, 0, [], "", ""
+
+    if target_path == "database.py" and _DB_TEMPLATE_LOADED:
+        log.info("coder_frozen_file", path=target_path)
+        return _DB_TEMPLATE_LOADED, 0, [], "", ""
+
+    if target_path.replace("\\", "/") == "templates/base.html" and _BASE_TEMPLATE_LOADED:
+        log.info("coder_frozen_file", path=target_path)
+        return _BASE_TEMPLATE_LOADED, 0, [], "", ""
+
+    if target_path.replace("\\", "/") == "templates/login.html" and _LOGIN_TEMPLATE_LOADED:
+        log.info("coder_frozen_file", path=target_path)
+        return _LOGIN_TEMPLATE_LOADED, 0, [], "", ""
+
+    if target_path == "auth.py" and _AUTH_TEMPLATE_LOADED:
+        log.info("coder_frozen_file", path=target_path)
+        return _AUTH_TEMPLATE_LOADED, 0, [], "", ""
+
+    if target_path == "main.py" and _MAIN_TEMPLATE_LOADED:
+        log.info("coder_frozen_file_routes", path=target_path)
+        routes_code = await _generate_app_routes(pm_brief, plan, design, target_path, log)
+        if routes_code:
+            _ROUTES_APPENDED.append({"path": "routes/main_routes.py", "content": routes_code})
+            _ROUTES_APPENDED.append({"path": "routes/__init__.py", "content": ""})
+            log.info("coder_routes_file_queued", chars=len(routes_code))
+        return _MAIN_TEMPLATE_LOADED, 0, [], "", ""
     """
     Generate one file. Returns (content_or_None, rag_tokens_used, warnings).
     """
@@ -746,7 +803,10 @@ async def _generate_one(
             )
         except Exception:
             pass
-
+        log.info("coder_raw_response", path=target_path, attempt=attempt,
+                 raw_len=len(result.content or ""),
+                 model=getattr(result, "model", "?"),
+                 first80=(result.content or "")[:80])
         ok, reason, data = _parse_coder_output(result.content)
         if not ok:
             last_attempt_content = result.content  # preserve raw
@@ -754,10 +814,25 @@ async def _generate_one(
             log.warning("coder_parse_failed", path=target_path, reason=reason,
                         attempt=attempt)
         else:
+            # Bug E fix: reject responses where AI returned a different file.
+            _ai_p = (data.get("path") or "").strip().replace("\\", "/")
+            _want_p = target_path.strip().replace("\\", "/")
+            _path_bad = bool(_ai_p) and (
+                _ai_p.rsplit("/", 1)[-1] != _want_p.rsplit("/", 1)[-1]
+            )
             # Force the path to be the one we asked for.
             content = data["content"]
             last_attempt_content = content  # preserve even if validation fails
-            vok, vreason, vmeta = _validate_file(target_path, content)
+            if _path_bad:
+                vok, vreason, vmeta = (
+                    False,
+                    f"path_mismatch:got={_ai_p}:want={target_path}",
+                    {},
+                )
+                log.warning("coder_path_mismatch", path=target_path,
+                            got=_ai_p, attempt=attempt)
+            else:
+                vok, vreason, vmeta = _validate_file(target_path, content)
             if vok:
                 warnings.extend(vmeta.get("warnings", []))
                 return content, rag_tokens, warnings, "", ""
@@ -794,6 +869,852 @@ async def _generate_one(
     log.error("coder_file_failed", path=target_path, reason=last_reason)
     # 5-tuple: (None, tokens, warnings, reason, failed_content)
     return None, rag_tokens, warnings, last_reason, (last_attempt_content or "")
+
+
+
+
+# --- Cross-file import repair -------------------------------------------
+_ALIAS_SUFFIX_MAP = {
+    "read": ("out", "response", "schema"),
+    "out": ("read", "response"),
+    "response": ("out", "read"),
+    "in": ("create", "input", "request"),
+    "input": ("create", "in", "request"),
+    "create": ("in", "input"),
+    "update": ("edit", "patch"),
+}
+
+
+def _defined_names(content: str) -> set:
+    names = set()
+    try:
+        tree = ast.parse(content)
+    except Exception:
+        return names
+    for node in tree.body:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    names.add(t.id)
+    return names
+
+
+def _find_similar(name: str, available: set) -> str:
+    n = name.lower()
+    for k, vs in _ALIAS_SUFFIX_MAP.items():
+        if n.endswith(k):
+            base = n[: -len(k)]
+            for v in vs:
+                for c in available:
+                    cl = c.lower()
+                    if cl.startswith(base) and cl.endswith(v):
+                        return c
+    if len(n) >= 4:
+        for c in available:
+            if c.lower().startswith(n[:4]) and c != name:
+                return c
+    return ""
+
+
+def _cross_file_alias_repair(files: list) -> list:
+    """Add alias lines when a file imports a name that target module lacks."""
+    py = {f["path"]: f["content"] for f in files if f["path"].endswith(".py")}
+    defined = {p: _defined_names(c) for p, c in py.items()}
+
+    aliases_to_add = {}
+    for path, content in py.items():
+        try:
+            tree = ast.parse(content)
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.level or not node.module:
+                continue
+            target_file = node.module + ".py"
+            if target_file not in py:
+                # Try as package path
+                target_file = node.module.replace(".", "/") + ".py"
+            if target_file not in py:
+                continue
+            avail = defined.get(target_file, set())
+            for al in node.names:
+                if al.name == "*" or al.name in avail:
+                    continue
+                similar = _find_similar(al.name, avail)
+                if similar:
+                    aliases_to_add.setdefault(target_file, {})[al.name] = similar
+
+    if not aliases_to_add:
+        return files
+
+    new_contents = {}
+    for target, amap in aliases_to_add.items():
+        lines = ["", "# Auto-generated aliases (cross-file import repair)"]
+        for missing, similar in amap.items():
+            lines.append(f"{missing} = {similar}  # noqa: F401")
+        new_contents[target] = py[target].rstrip() + "\n" + "\n".join(lines) + "\n"
+
+    out = []
+    for f_ in files:
+        if f_["path"] in new_contents:
+            out.append({"path": f_["path"], "content": new_contents[f_["path"]]})
+        else:
+            out.append(f_)
+    return out
+
+
+
+
+# --- Strip relative imports ---------------------------------------------
+def _strip_relative_imports(files: list) -> list:
+    """Remove leading dots from relative imports in .py files."""
+    out = []
+    for f in files:
+        if not f["path"].endswith(".py"):
+            out.append(f)
+            continue
+        content = f["content"]
+        new_lines = []
+        changed = False
+        for line in content.splitlines(keepends=True):
+            stripped = line.lstrip()
+            indent = line[: len(line) - len(stripped)]
+            if stripped.startswith("from . import "):
+                # "from . import X" -> "import X"
+                line = indent + "import " + stripped[len("from . import "):]
+                changed = True
+            elif stripped.startswith("from ."):
+                # "from .mod import X" -> "from mod import X"
+                line = indent + "from " + stripped[len("from ."):].lstrip()
+                changed = True
+            elif stripped.startswith("import ."):
+                line = indent + "import " + stripped[len("import ."):].lstrip(".")
+                changed = True
+            new_lines.append(line)
+        if changed:
+            f = {"path": f["path"], "content": "".join(new_lines)}
+        out.append(f)
+    return out
+
+
+
+
+# --- TemplateResponse signature repair ----------------------------------
+import re as _re_tresp
+
+_TRESP_RE = _re_tresp.compile(
+    r"TemplateResponse\s*\(\s*"           # TemplateResponse(
+    r"([\"\'])([^\"\']+)\1\s*,\s*"     # "filename.html",
+    r"\{\s*([\"\'])request\3\s*:\s*"   # {"request":
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*,?"       # varname,
+)
+
+
+def _repair_template_response(files: list) -> list:
+    """Rewrite old TemplateResponse("x.html", {"request": r, ...})
+    to new  TemplateResponse(r, "x.html", {...})."""
+    out = []
+    for f in files:
+        if not f["path"].endswith(".py"):
+            out.append(f)
+            continue
+        content = f["content"]
+        new_content = _TRESP_RE.sub(
+            lambda m: (
+                'TemplateResponse(' + m.group(4) + ', '
+                + m.group(1) + m.group(2) + m.group(1) + ', {'
+            ),
+            content,
+        )
+        if new_content != content:
+            out.append({"path": f["path"], "content": new_content})
+        else:
+            out.append(f)
+    return out
+
+
+
+
+# --- Ensure static/ folder exists if main.py mounts it ------------------
+def _ensure_static_dir(files: list) -> list:
+    """If any .py file mounts StaticFiles(directory='static') but no
+    static/ file exists, add a placeholder static/style.css."""
+    has_static_mount = False
+    has_static_file = False
+    for f in files:
+        p = f["path"]
+        if p.startswith("static/"):
+            has_static_file = True
+        if p.endswith(".py"):
+            c = f["content"]
+            if "StaticFiles" in c and '"static"' in c:
+                has_static_mount = True
+            if "StaticFiles" in c and "'static'" in c:
+                has_static_mount = True
+    if has_static_mount and not has_static_file:
+        files = list(files) + [{
+            "path": "static/style.css",
+            "content": "/* placeholder so StaticFiles mount succeeds */\n",
+        }]
+    return files
+
+
+
+
+async def _generate_app_routes(pm_brief, plan, design, target_path, log):
+    """Ask AI for app-specific routes only, to insert into main.py template."""
+    pages = pm_brief.get("pages", []) or []
+    features = pm_brief.get("features", []) or []
+    routes = plan.get("routes", []) or []
+    frozen = {("GET", "/login"), ("POST", "/login"), ("POST", "/logout"), ("GET", "/health")}
+    app_routes = []
+    for r in routes:
+        m = (r.get("method") or "GET").upper()
+        p = r.get("path") or ""
+        if (m, p) not in frozen:
+            app_routes.append(r)
+    if not app_routes:
+        app_routes = [{"method": "GET", "path": "/", "handler": "dashboard"}]
+
+    system = (
+        "You are writing ONLY the app-specific route functions for a FastAPI app. "
+        "main.py already has in scope: app (FastAPI), templates (Jinja2Templates), "
+        "get_db, get_current_user (returns Optional[models.User]), "
+        "get_session_id, generate_csrf_token, validate_csrf_token, "
+        "models, schemas, auth (modules), Request, Form, Depends, HTTPException, "
+        "status, RedirectResponse, HTMLResponse, select, Session. "
+        "DO NOT re-import any of these. Output ONLY route functions as raw Python code. "
+        "Use @app.get(...) and @app.post(...). Use templates.TemplateResponse(request, \"file.html\", {...}). "
+        "AVAILABLE TEMPLATES (use only these in TemplateResponse): "
+        + ", ".join(plan.get("files", [])) + ". "
+        "For login-required routes, use user: Optional[models.User] = Depends(get_current_user). "
+        "For POST forms, accept csrf_token: str = Form(...) and validate. "
+        "No markdown, no JSON, no imports. "
+        + ("\\n\\n" + _tpl_frozen() if _tpl_frozen() else "")
+    )
+    import json as _json
+    body = _json.dumps({
+        "app_name": pm_brief.get("app_name", "App"),
+        "features": features, "pages": pages,
+        "routes_to_implement": app_routes,
+    }, ensure_ascii=False, indent=2)
+    try:
+        from security import prompt_guard as pg
+        from ai.groq_client import chat as _gc
+        san = pg.sanitize_user_input(body)
+        if not san.ok:
+            san = pg.sanitize_user_input(body[: pg.MAX_INPUT_CHARS])
+        msgs = pg.build_messages(system, san.cleaned)
+        r = await _gc(msgs, temperature=0.1, max_tokens=4000)
+        code = (r.content or "").strip()
+        if code.startswith("```"):
+            code = code.split("\n", 1)[1] if "\n" in code else code
+            code = code.rsplit("```", 1)[0]
+        ok, why = _validate_routes_fragment(code)
+        if not ok:
+            log.warning("coder_routes_invalid", reason=why, chars=len(code), preview=code[:120])
+            # Retry up to 2 more times with stricter prompt
+            for _retry in range(2):
+                strict_prompt = (
+                    system + "\n\nCRITICAL: Your previous response was INVALID ("
+                    + why + "). Return ONLY the FULL function definitions. "
+                    "Each function MUST have its own @app.get(...) or @app.post(...) decorator "
+                    "and complete `async def name(request: Request, ...):` signature. "
+                    "Do NOT return bare dictionaries. Do NOT return fragments. "
+                    "Return complete, runnable Python functions only."
+                )
+                msgs2 = [
+                    {"role": "system", "content": strict_prompt},
+                    {"role": "user", "content": san.cleaned},
+                ]
+                try:
+                    r2 = await _gc(msgs2, temperature=0.1, max_tokens=6000)
+                    code2 = (getattr(r2, "content", "") or "").strip()
+                    if code2.startswith("```"):
+                        code2 = code2.split("\n", 1)[1] if "\n" in code2 else code2
+                        code2 = code2.rsplit("```", 1)[0]
+                    ok2, why2 = _validate_routes_fragment(code2)
+                    if ok2:
+                        log.info("coder_routes_generated_retry_ok", chars=len(code2), retry=_retry + 1)
+                        return code2
+                    log.warning("coder_routes_retry_failed", retry=_retry + 1, reason=why2)
+                except Exception as _e:
+                    log.warning("coder_routes_retry_exc", err=str(_e)[:200])
+
+            # Fallback: minimal valid dashboard route
+            log.warning("coder_routes_using_fallback")
+            return (
+                "from fastapi import APIRouter, Request, Depends\n"
+                "from fastapi.responses import HTMLResponse, RedirectResponse\n"
+                "from typing import Optional\n"
+                "from main import templates, get_current_user, render_first_available\n"
+                "import models\n\n"
+                "router = APIRouter()\n\n"
+                "@router.get(\"/\", response_class=HTMLResponse)\n"
+                "async def dashboard(request: Request, user: Optional[models.User] = Depends(get_current_user)):\n"
+                "    if not user:\n"
+                "        return RedirectResponse(url=\"/login\", status_code=302)\n"
+                "    return render_first_available(request, [\"dashboard.html\", \"home.html\", \"index.html\", \"login.html\"], {\"user\": user})\n"
+            )
+        log.info("coder_routes_generated", chars=len(code))
+        return code
+    except Exception as exc:
+        log.warning("coder_routes_failed", err=str(exc))
+        return (
+            '@app.get("/", response_class=HTMLResponse)\n'
+            'async def dashboard(request: Request, user: Optional[models.User] = Depends(get_current_user)):\n'
+            '    if not user:\n'
+        '        return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)\n'
+            '    return templates.TemplateResponse(request, "dashboard.html", {"user": user})\n'
+        )
+
+
+
+
+# --- Fix base.html self-extend bug -------------------------------------
+def _fix_base_template(files: list) -> list:
+    """If base.html starts with {% extends "base.html" %}, strip that line."""
+    out = []
+    for f in files:
+        p = f["path"].replace("\\", "/")
+        if p.endswith("base.html"):
+            c = f["content"]
+            stripped = c.lstrip()
+            if stripped.startswith('{% extends "base.html" %}'):
+                # Remove the first line (extends) and any leading blank lines
+                parts = c.split("\n", 1)
+                c = parts[1] if len(parts) > 1 else ""
+                c = c.lstrip("\n")
+                f = {"path": f["path"], "content": c}
+        out.append(f)
+    return out
+
+
+
+
+# --- SQLAlchemy 2.0 Mapped[...] fix ------------------------------------
+import re as _re_sqla
+
+_REL_PATTERNS = [
+    # tasks: List["Task"] = relationship(  ->  Mapped[list["Task"]]
+    (_re_sqla.compile(r'(\w+)\s*:\s*List\["(\w+)"\]\s*=\s*relationship\s*\('),
+     lambda m: f'{m.group(1)}: Mapped[list["{m.group(2)}"]] = relationship('),
+    # tasks: List[Task] = relationship(  (unquoted)  ->  Mapped[list["Task"]]
+    (_re_sqla.compile(r'(\w+)\s*:\s*List\[(\w+)\]\s*=\s*relationship\s*\('),
+     lambda m: f'{m.group(1)}: Mapped[list["{m.group(2)}"]] = relationship('),
+    # tasks: list["Task"] = relationship(
+    (_re_sqla.compile(r'(\w+)\s*:\s*list\["(\w+)"\]\s*=\s*relationship\s*\('),
+     lambda m: f'{m.group(1)}: Mapped[list["{m.group(2)}"]] = relationship('),
+    # tasks: list[Task] = relationship(  (unquoted)
+    (_re_sqla.compile(r'(\w+)\s*:\s*list\[(\w+)\]\s*=\s*relationship\s*\('),
+     lambda m: f'{m.group(1)}: Mapped[list["{m.group(2)}"]] = relationship('),
+    # owner: "User" = relationship(
+    (_re_sqla.compile(r'(\w+)\s*:\s*"(\w+)"\s*=\s*relationship\s*\('),
+     lambda m: f'{m.group(1)}: Mapped["{m.group(2)}"] = relationship('),
+    # owner: User = relationship(  (bare capital)
+    (_re_sqla.compile(r'(\w+)\s*:\s*([A-Z]\w*)\s*=\s*relationship\s*\('),
+     lambda m: f'{m.group(1)}: Mapped["{m.group(2)}"] = relationship('),
+]
+
+
+def _fix_sqlalchemy_relationships(files: list) -> list:
+    """Add Mapped[...] type hints to SQLAlchemy relationship declarations."""
+    out = []
+    for f in files:
+        p = f["path"]
+        if not p.endswith(".py") or "models" not in p:
+            out.append(f)
+            continue
+        content = f["content"]
+        changed = False
+
+        # First apply the substitutions
+        for regex, repl in _REL_PATTERNS:
+            new_content = regex.sub(repl, content)
+            if new_content != content:
+                content = new_content
+                changed = True
+
+        # Then ensure Mapped import is present IF any Mapped[...] got added
+        if "Mapped[" in content and "import Mapped" not in content:
+            if "from sqlalchemy.orm import relationship" in content:
+                content = content.replace(
+                    "from sqlalchemy.orm import relationship",
+                    "from sqlalchemy.orm import Mapped, relationship",
+                    1,
+                )
+                changed = True
+            elif "from sqlalchemy.orm import" in content:
+                # Generic: add Mapped to any orm import line
+                content = content.replace(
+                    "from sqlalchemy.orm import ",
+                    "from sqlalchemy.orm import Mapped, ",
+                    1,
+                )
+                changed = True
+            else:
+                # No orm import at all — add one right after sqlalchemy import
+                content = content.replace(
+                    "from sqlalchemy import ",
+                    "from sqlalchemy.orm import Mapped\nfrom sqlalchemy import ",
+                    1,
+                )
+                changed = True
+
+        if changed:
+            out.append({"path": p, "content": content})
+        else:
+            out.append(f)
+    return out
+
+
+
+
+# --- Auto-prefix auth-only functions with auth. -------------------------
+import re as _re_auth
+
+_AUTH_ONLY = ["hash_password", "verify_password", "bcrypt_hash_password"]
+
+
+def _fix_auth_calls(files: list) -> list:
+    """In main.py (or any .py), prefix bare calls to auth-only funcs with auth."""
+    out = []
+    for f in files:
+        p = f["path"]
+        if not p.endswith(".py") or p.endswith("auth.py"):
+            out.append(f)
+            continue
+        content = f["content"]
+        orig = content
+
+        # Skip if 'def <name>' exists in the same file (locally defined)
+        for name in _AUTH_ONLY:
+            if _re_auth.search(rf"\bdef\s+{name}\b", content):
+                continue
+            # Replace bare `name(` with `auth.name(`
+            # Avoid matching `auth.name(` or `something.name(`
+            pattern = _re_auth.compile(rf"(?<![\w.]){name}\s*\(")
+            content = pattern.sub(f"auth.{name}(", content)
+
+        # Ensure `auth` is imported when we made a change
+        if content != orig and "import auth" not in content:
+            # Insert after the last "import models" style line or at top
+            if "from database import" in content:
+                content = content.replace(
+                    "from database import",
+                    "import auth\nfrom database import",
+                    1,
+                )
+            else:
+                content = "import auth\n" + content
+
+        out.append({"path": p, "content": content} if content != orig else f)
+    return out
+
+
+
+
+# --- Strip {{ config.* }} from AI templates (undefined in template) -----
+import re as _re_cfg
+
+_CFG_RE = _re_cfg.compile(r"\{\{\s*config(\.[\w.]+|\[[^\]]+\])*\s*\}\}")
+
+
+def _fix_template_config(files: list) -> list:
+    """Remove {{ config.X }} expressions from .html files — they're undefined."""
+    out = []
+    for f in files:
+        p = f["path"].replace("\\", "/")
+        if not p.endswith(".html"):
+            out.append(f)
+            continue
+        c = f["content"]
+        new = _CFG_RE.sub("", c)
+        if new != c:
+            out.append({"path": f["path"], "content": new})
+        else:
+            out.append(f)
+    return out
+
+
+
+
+# --- Pydantic v1 -> v2 keyword fix --------------------------------------
+def _fix_pydantic_kwargs_files(files: list) -> list:
+    """Run pydantic_fix on every .py file content."""
+    out = []
+    for f in files:
+        p = f["path"]
+        if not p.endswith(".py"):
+            out.append(f)
+            continue
+        try:
+            new_content, ch = _fix_pyd(f["content"])
+            new_content, ch2 = _fix_cfg([{"path": p, "content": new_content}])
+            new_content = ch2[0]["content"] if ch2 else new_content
+            ch = ch + [f"cfgfix: {p}"] if ch2 else ch
+        except Exception:
+            out.append(f)
+            continue
+        if ch:
+            out.append({"path": p, "content": new_content})
+        else:
+            out.append(f)
+    return out
+
+
+
+
+# --- Cross-file static repair loop (max 3 attempts) --------------------
+async def _cross_file_repair_loop(files: list, log, max_attempts: int = 3) -> list:
+    from security.static_checks import run_all as _run_static
+    try:
+        from agents.template_exports import all_template_exports as _all_exports
+    except Exception:
+        _all_exports = None
+
+    FROZEN = {"main.py", "auth.py", "database.py", "templates/base.html"}
+
+    for attempt in range(1, max_attempts + 1):
+        issues = _run_static(files)
+        cross = [i for i in issues if ":missing:" in i or "undefined name" in i]
+        if not cross:
+            log.info("cross_file_check_passed", attempt=attempt)
+            return files
+
+        by_file = {}
+        for i in cross:
+            parts = i.split(":", 3)
+            fname = parts[0] if parts else ""
+            by_file.setdefault(fname, []).append(i)
+
+        log.warning("cross_file_repair_start", attempt=attempt,
+                    files=list(by_file.keys()), count=len(cross))
+
+        exports_text = ""
+        if _all_exports:
+            ex = _all_exports()
+            chunks = []
+            for mod, info in ex.items():
+                names = info.get("names", [])
+                if names:
+                    chunks.append(f"{mod}.py exports: {', '.join(names)}")
+            exports_text = "\n".join(chunks)
+
+        project_names = []
+        for f_ in files:
+            if not f_["path"].endswith(".py"):
+                continue
+            try:
+                tree = ast.parse(f_["content"])
+                for n in tree.body:
+                    if isinstance(n, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                        project_names.append(f"{f_['path']}: {n.name}")
+            except Exception:
+                continue
+        project_names_text = "\n".join(project_names[:80])
+
+        new_files = []
+        for f_ in files:
+            if f_["path"] not in by_file or f_["path"] in FROZEN:
+                new_files.append(f_)
+                continue
+
+            errs = "\n".join(by_file[f_["path"]])
+            prompt = (
+                f"This file has static errors. Rewrite it COMPLETELY.\n"
+                f"File: {f_['path']}\n\n"
+                f"ERRORS:\n{errs}\n\n"
+                f"AVAILABLE NAMES IN FROZEN MODULES:\n{exports_text}\n\n"
+                f"OTHER PROJECT FILES' EXPORTS:\n{project_names_text}\n\n"
+                f"RULES:\n"
+                f"- Only import names that actually exist above.\n"
+                f"- If a name is missing, use the closest existing one (e.g. NoteOut not NoteRead).\n"
+                f"- Do NOT redefine templates, get_db, get_current_user if they come from a frozen module - import them.\n"
+                f"- Return ONLY the full file content, no markdown, no JSON."
+            )
+            try:
+                from security import prompt_guard as _pg
+                from ai.groq_client import chat as _gc
+                san = _pg.sanitize_user_input(prompt)
+                if not san.ok:
+                    san = _pg.sanitize_user_input(prompt[: _pg.MAX_INPUT_CHARS])
+                msgs = [
+                    {"role": "system", "content": "You are fixing static errors in one Python file."},
+                    {"role": "user", "content": san.cleaned},
+                ]
+                r = None
+                nc = ""
+                for _try in range(3):
+                    try:
+                        r = await _gc(msgs, temperature=0.1, max_tokens=6000)
+                    except Exception as _e:
+                        log.warning("ensure_files_call_failed", path=target, err=str(_e))
+                        r = None
+                    if r is not None and (r.content or "").strip():
+                        nc = (r.content or "").strip()
+                        break
+                    await asyncio.sleep(2)
+                if nc.startswith("```"):
+                    nc = nc.split("\n", 1)[1] if "\n" in nc else nc
+                    nc = nc.rsplit("```", 1)[0]
+                if nc:
+                    new_files.append({"path": f_["path"], "content": nc})
+                    log.info("cross_file_rewrite", path=f_["path"], chars=len(nc))
+                else:
+                    new_files.append(f_)
+            except Exception as exc:
+                log.warning("cross_file_rewrite_failed", path=f_["path"], err=str(exc))
+                new_files.append(f_)
+
+        files = new_files
+
+    log.warning("cross_file_repair_exhausted", attempts=max_attempts)
+    return files
+
+
+
+
+# --- Ensure every planned file exists ----------------------------------
+async def _ensure_planned_files(files: list, plan: dict, log) -> list:
+    planned = [f for f in (plan.get("files") or []) if isinstance(f, str)]
+    if not planned:
+        return files
+    present = {f["path"].replace("\\", "/") for f in files}
+    FROZEN = {"database.py", "auth.py", "templates/base.html"}
+    missing = [p for p in planned if p.replace("\\", "/") not in present and p.replace("\\", "/") not in FROZEN]
+    if not missing:
+        log.info("ensure_files_ok", total=len(planned))
+        return files
+    log.warning("ensure_files_missing", missing=missing)
+    for target in missing[:6]:
+        for attempt in (1, 2):
+            try:
+                _hint = ""
+                _tables = (plan.get("database") or {}).get("tables", []) or []
+                if target.endswith("models.py") and _tables:
+                    _l = ["MODEL CLASSES REQUIRED (define EXACTLY these):"]
+                    for _t in _tables:
+                        _nm = (_t.get("name") or "").rstrip("s").capitalize() or "Item"
+                        _cols = [c.get("name") for c in (_t.get("columns") or []) if c.get("name")]
+                        _l.append(f"  - class {_nm}(Base): columns = {', '.join(_cols)}")
+                    _hint = "\n".join(_l) + "\n\n"
+                elif target.endswith("schemas.py") and _tables:
+                    _l = ["PYDANTIC MODELS REQUIRED (define EXACTLY these):"]
+                    for _t in _tables:
+                        _nm = (_t.get("name") or "").rstrip("s").capitalize() or "Item"
+                        _l.append(f"  - class {_nm}Base, {_nm}Create, {_nm}Update, {_nm}Out (BaseModel)")
+                    _hint = "\n".join(_l) + "\n\n"
+
+                prompt = (
+                    f"Generate ONLY this file: {target}\n\n"
+                    + _hint +
+                    f"Rules:\n"
+                    f"- Return ONLY the full file content, no markdown, no JSON.\n"
+                    f"- For .py: valid Python, use imports from sqlalchemy, fastapi, pydantic.\n"
+                    f"- If schemas.py: Pydantic v2 models (BaseModel), use Field(pattern=...) not regex=.\n"
+                    f"- If models.py: SQLAlchemy 2.0, every column Mapped[...], every relationship Mapped[list[\"X\"]].\n"
+                    f"- For .html: Jinja2 template extending base.html, use {{% block content %}}.\n"
+                )
+                from security import prompt_guard as _pg
+                from ai.groq_client import chat as _gc
+                san = _pg.sanitize_user_input(prompt)
+                if not san.ok:
+                    san = _pg.sanitize_user_input(prompt[: _pg.MAX_INPUT_CHARS])
+                msgs = [
+                    {"role": "system", "content": "You write one complete file. Return raw content only."},
+                    {"role": "user", "content": san.cleaned},
+                ]
+                r = await _gc(msgs, temperature=0.1, max_tokens=6000)
+                nc = (r.content or "").strip()
+                if nc.startswith("```"):
+                    nc = nc.split("\n", 1)[1] if "\n" in nc else nc
+                    nc = nc.rsplit("```", 1)[0]
+                if nc and len(nc) > 20:
+                    files.append({"path": target, "content": nc})
+                    log.info("ensure_files_created", path=target, chars=len(nc), attempt=attempt)
+                    break
+            except Exception as exc:
+                log.warning("ensure_files_failed", path=target, attempt=attempt, err=str(exc))
+    return files
+
+
+
+
+# --- Validate routes fragment before merging into main.py ---------------
+def _validate_routes_fragment(code: str) -> tuple[bool, str]:
+    """Check that the AI's routes fragment parses as valid Python at module level."""
+    if not code or not code.strip():
+        return False, "empty"
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, f"syntax:{e.lineno}:{e.msg}"
+    # Must contain at least one @app.get / @app.post / @app.put / @app.delete
+    has_router = False
+    has_route_fn = False
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "router":
+                    has_router = True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for dec in node.decorator_list:
+                src = ast.unparse(dec)
+                if src.startswith("router."):
+                    has_route_fn = True
+                    break
+    if not has_router:
+        return False, "no_router_object"
+    if not has_route_fn:
+        return False, "no_route_functions"
+    return True, "ok"
+
+
+
+
+# --- Ensure frozen files exist (even if Architect didn't list them) -----
+def _add_missing_frozen_files(files: list) -> list:
+    """Append any frozen template that is not already in `files`."""
+    present = {f["path"].replace("\\", "/") for f in files}
+    frozen = [
+        ("database.py", _DB_TEMPLATE_LOADED),
+        ("auth.py", _AUTH_TEMPLATE_LOADED),
+        ("templates/base.html", _BASE_TEMPLATE_LOADED),
+        ("templates/login.html", _LOGIN_TEMPLATE_LOADED),
+    ]
+    for path, tpl in frozen:
+        if path in present or not tpl:
+            continue
+        files.append({"path": path, "content": tpl})
+    return files
+
+
+
+
+def _ensure_routes_init(files: list) -> list:
+    """Add routes/__init__.py if routes folder is used but init is missing."""
+    paths = {f["path"] for f in files}
+    if any(p.startswith("routes/") for p in paths) and "routes/__init__.py" not in paths:
+        files.append({"path": "routes/__init__.py", "content": ""})
+    return files
+
+
+
+
+# --- Guarantee User class exists in models.py ---------------------------
+def _ensure_user_model(files: list) -> list:
+    """If models.py exists but lacks a User class, append a minimal one."""
+    out = []
+    for f in files:
+        if f["path"] != "models.py":
+            out.append(f)
+            continue
+        content = f["content"]
+        try:
+            tree = ast.parse(content)
+            has_user = any(isinstance(n, ast.ClassDef) and n.name == "User" for n in tree.body)
+        except Exception:
+            has_user = "class User" in content
+        if has_user:
+            out.append(f)
+            continue
+        MIN_USER = "\n\n# Auto-added User model (auth requires it)\n" \
+                   "from sqlalchemy import Column, Integer, String, DateTime, func\n\n\n" \
+                   "class User(Base):\n" \
+                   "    __tablename__ = \"users\"\n" \
+                   "    id = Column(Integer, primary_key=True, index=True)\n" \
+                   "    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)\n" \
+                   "    email = Column(String(255), unique=True, nullable=False, index=True)\n" \
+                   "    hashed_password = Column(String(255), nullable=False)\n"
+        content = content.rstrip() + MIN_USER
+        out.append({"path": f["path"], "content": content})
+    return out
+
+
+
+
+# --- Strip "templates/" prefix in Jinja extends -----------------------
+import re as _re_tplext
+_TE = _re_tplext.compile(r'\{%\s*extends\s+"templates/([^"]+)"\s*%\}')
+
+
+def _strip_template_prefix(files: list) -> list:
+    """Rewrite {% extends "templates/base.html" %} to {% extends "base.html" %}."""
+    out = []
+    for f in files:
+        if not f["path"].endswith(".html"):
+            out.append(f)
+            continue
+        new_c = _TE.sub(lambda m: '{% extends "' + m.group(1) + '" %}', f["content"])
+        if new_c != f["content"]:
+            out.append({"path": f["path"], "content": new_c})
+        else:
+            out.append(f)
+    return out
+
+
+
+
+# --- Fix models.py: remove self-defined Base, import from database -------
+import re as _re_base
+
+
+def _fix_models_base(files: list) -> list:
+    """If models.py defines its own Base class, replace with import from database."""
+    out = []
+    for f in files:
+        if f["path"] != "models.py":
+            out.append(f)
+            continue
+        content = f["content"]
+        orig = content
+
+        # Pattern 1: class Base(DeclarativeBase): ...
+        # Pattern 2: class Base(Base): ...
+        # Pattern 3: Base = declarative_base()
+        patterns = [
+            (r"^[ \t]*class\s+Base\s*\(\s*DeclarativeBase\s*\)\s*:\s*\n(?:[ \t]+.*\n)*", ""),
+            (r"^[ \t]*class\s+Base\s*\(\s*Base\s*\)\s*:\s*\n(?:[ \t]+.*\n)*", ""),
+            (r"^[ \t]*Base\s*=\s*declarative_base\s*\(\s*\)\s*\n", ""),
+        ]
+        removed = False
+        for pat, repl in patterns:
+            new_c = _re_base.sub(pat, repl, content, flags=_re_base.MULTILINE)
+            if new_c != content:
+                content = new_c
+                removed = True
+
+        if not removed:
+            out.append(f)
+            continue
+
+        # Ensure import from database is present
+        if "from database import" in content and "Base" in content.split("from database import")[1].split("\n")[0]:
+            pass  # already importing
+        else:
+            # Insert import right after __future__ or docstring
+            lines = content.splitlines(keepends=True)
+            insert_at = 0
+            for i, ln in enumerate(lines[:10]):
+                if ln.startswith("from __future__"):
+                    insert_at = i + 1
+                    break
+                if ln.strip().startswith('"""') and i == 0:
+                    # Skip docstring
+                    for j in range(i + 1, min(len(lines), 30)):
+                        if '"""' in lines[j]:
+                            insert_at = j + 1
+                            break
+                    break
+            content = "".join(lines[:insert_at]) + "from database import Base\n" + "".join(lines[insert_at:])
+
+        out.append({"path": f["path"], "content": content})
+    return out
 
 
 # --- Main entry point ---------------------------------------------------
@@ -870,6 +1791,40 @@ async def run_coder_agent(
         rag_tokens=total_rag_tokens,
     )
 
+    # Drain queued routes files
+    for _rf in _ROUTES_APPENDED:
+        if _rf["path"] not in {f["path"] for f in files_out}:
+            files_out.append(_rf)
+    _ROUTES_APPENDED.clear()
+
+    files_out = _ensure_routes_init(files_out)
+    files_out = _strip_template_prefix(files_out)
+    files_out = _strip_relative_imports(files_out)
+    files_out = _fix_base_template(files_out)
+    files_out = _fix_sqlalchemy_relationships(files_out)
+    files_out = _fix_models_base(files_out)
+    files_out = _fix_auth_calls(files_out)
+    files_out = _fix_template_config(files_out)
+    files_out = _fix_pydantic_kwargs_files(files_out)
+    files_out, _gr_ch = _ensure_req(files_out)
+    if _gr_ch:
+        log.info("goodreq_changes", changes=_gr_ch)
+    files_out, _pf_ch = _preflight_fix(files_out)
+    if _pf_ch:
+        log.info("preflight_changes", changes=_pf_ch)
+    files_out = _add_missing_frozen_files(files_out)
+    files_out = _ensure_user_model(files_out)
+    files_out = await _ensure_planned_files(files_out, plan, log)
+    files_out, _cl_ch = _fix_clash(files_out)
+    if _cl_ch:
+        log.info("clashfix_changes", changes=_cl_ch)
+    files_out, _imp_ch = _fix_missing_imports(files_out)
+    if _imp_ch:
+        log.info("autoimport_changes", changes=_imp_ch)
+    files_out = await _cross_file_repair_loop(files_out, log)
+    files_out = _ensure_static_dir(files_out)
+    files_out = _repair_template_response(files_out)
+    files_out = _cross_file_alias_repair(files_out)
     return {
         "files": files_out,
         "rag_tokens_used": total_rag_tokens,

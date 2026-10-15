@@ -41,7 +41,7 @@ from typing import Any, Iterable, Optional
 from security.secret_scan import contains_secret
 
 # --- Caps ----------------------------------------------------------------
-MAX_INPUT_CHARS = 4000
+MAX_INPUT_CHARS = 20000
 MAX_OUTPUT_CHARS = 40000
 MAX_SYSTEM_CHARS = 4000
 

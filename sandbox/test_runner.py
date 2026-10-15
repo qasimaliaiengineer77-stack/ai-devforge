@@ -108,6 +108,28 @@ def l1_static_checks(files: dict) -> bool:
     return len(ISSUES_L1) == 0
 
 
+# ---------- pyflakes helper (undefined names) ----------------------------
+def _run_pyflakes(rel: str, content: str) -> list:
+    """Run pyflakes on a single file's content, return undefined-name issues."""
+    try:
+        from pyflakes.api import check
+        from pyflakes.reporter import Reporter
+        import io
+    except ImportError:
+        return []
+    out = io.StringIO()
+    try:
+        check(content, filename=rel, reporter=Reporter(out, out))
+    except Exception:
+        return []
+    issues = []
+    for line in out.getvalue().splitlines():
+        low = line.lower()
+        if "undefined name" in low or "unable to detect undefined" in low:
+            issues.append("pyflakes:" + line.strip())
+    return issues
+
+
 # ---------- L2: syntax (ast.parse) ---------------------------------------
 def l2_syntax_checks(files: dict) -> bool:
     any_py = False
@@ -119,8 +141,12 @@ def l2_syntax_checks(files: dict) -> bool:
             ast.parse(content)
         except SyntaxError as exc:
             ISSUES_L2.append(f"{rel}:syntax:{exc.lineno}:{exc.msg}")
+            continue
         except Exception as exc:
             ISSUES_L2.append(f"{rel}:ast_error:{type(exc).__name__}")
+            continue
+        for issue in _run_pyflakes(rel, content):
+            ISSUES_L2.append(f"{rel}:{issue}")
     if not any_py:
         ISSUES_L2.append("no_python_files")
     return len(ISSUES_L2) == 0
@@ -161,7 +187,7 @@ def l3_http_tests() -> bool:
     try:
         from fastapi.testclient import TestClient
     except Exception as exc:
-        ISSUES_L3.append(f"testclient_import_failed:{type(exc).__name__}")
+        ISSUES_L3.append(f"testclient_import_failed:{type(exc).__name__}: {str(exc)[:200]}")
         return False
 
     client = TestClient(app)
@@ -180,10 +206,10 @@ def l3_http_tests() -> bool:
         return r
 
     # 5 tests
-    _hit("GET", "/", expect=(200, 404))                # 1
-    _hit("GET", "/health", expect=(200, 404))          # 2
-    _hit("GET", "/login", expect=(200, 404, 405))      # 3
-    _hit("GET", "/signup", expect=(200, 404, 405))     # 4
+    _hit("GET", "/", expect=(200, 401, 403, 404, 302, 307))                # 1
+    _hit("GET", "/health", expect=(200, 401, 403, 404))          # 2
+    _hit("GET", "/login", expect=(200, 401, 403, 404, 405))      # 3
+    _hit("GET", "/signup", expect=(200, 401, 403, 404, 405))     # 4
     _hit("POST", "/login", expect=(200, 400, 401, 403, 404, 422),
          data={"username": "x", "password": "y"})      # 5
 

@@ -52,7 +52,7 @@ APP_CONTAINER_PREFIX = "app"
 APP_INTERNAL_PORT = 8000
 
 BUILD_TIMEOUT_S = 300
-RUN_START_TIMEOUT_S = 15
+RUN_START_TIMEOUT_S = 60
 APP_MEMORY = "512m"
 APP_CPUS = "1.0"
 APP_PIDS = "200"
@@ -263,12 +263,11 @@ def remove_app_image(job_id: str) -> None:
 
 
 def cleanup_app(job_id: str, output_root: Path) -> None:
+    """Stop app container and remove app image. DO NOT touch the workspace
+    folder ? approval and deploy stages need it."""
     stop_app_container(job_id)
     remove_app_image(job_id)
-    safe = _safe_id(job_id)
-    workspace = output_root / safe
-    if workspace.exists():
-        shutil.rmtree(workspace, ignore_errors=True)
+    # NOTE: workspace is intentionally preserved (approval + deploy need files)
 
 
 def wait_until_ready(

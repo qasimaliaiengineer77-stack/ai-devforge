@@ -64,17 +64,35 @@ def redact(text: Any) -> str:
 _global_limiter = AsyncLimiter(max_rate=cfg.GLOBAL_RPM, time_period=60)
 
 # --- Async client (singleton, lazy) --------------------------------------
-_client: Optional[AsyncGroq] = None
+_clients: list = []
+_current_key_index: int = 0
+
+
+def _load_all_keys() -> list:
+    keys = []
+    for name in ("GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3", "GROQ_API_KEY_4", "GROQ_API_KEY_5", "GROQ_API_KEY_6"):
+        k = os.getenv(name, "").strip()
+        if k and not k.startswith("PUT_"):
+            keys.append(k)
+    return keys
 
 
 def _get_client() -> AsyncGroq:
-    global _client
-    if _client is None:
-        api_key = os.getenv("GROQ_API_KEY", "").strip()
-        if not api_key or api_key.startswith("PUT_"):
-            raise RuntimeError("GROQ_API_KEY is not set in .env")
-        _client = AsyncGroq(api_key=api_key)
-    return _client
+    global _clients
+    if not _clients:
+        keys = _load_all_keys()
+        if not keys:
+            raise RuntimeError("No GROQ_API_KEY set in .env")
+        _clients = [AsyncGroq(api_key=k) for k in keys]
+        logger.info("groq_keys_loaded count=%d", len(_clients))
+    idx = min(_current_key_index, len(_clients) - 1)
+    return _clients[idx]
+
+
+def _num_keys() -> int:
+    if not _clients:
+        _get_client()
+    return len(_clients)
 
 
 # --- Result type ---------------------------------------------------------
@@ -165,6 +183,29 @@ async def chat(
     primary_cap = cfg.PRIMARY_MAX_TOKENS if max_tokens is None else max_tokens
     fallback_cap = min(primary_cap, cfg.FALLBACK_MAX_TOKENS)
 
+    # ---- PRIMARY: Apmix.ai (Claude Sonnet 4.6 free) ----
+    try:
+        from ai.apmix_client import chat as _apmix_chat, is_configured as _apmix_ok
+        if _apmix_ok():
+            _temp = 0.1 if temperature is None else temperature
+            logger.info("apmix_trying_first model=%s", "claude-sonnet-4-6-free")
+            a = await _apmix_chat(messages, temperature=_temp, max_tokens=primary_cap)
+            if (a.content or "").strip():
+                return GroqResult(
+                    content=a.content,
+                    model="apmix/" + a.model,
+                    input_tokens=a.input_tokens,
+                    output_tokens=a.output_tokens,
+                    total_tokens=a.total_tokens,
+                    latency_ms=a.latency_ms,
+                    attempts=a.attempts,
+                    used_fallback=False,
+                )
+            logger.warning("apmix_empty_response_falling_back")
+    except Exception as _aexc:
+        logger.warning("apmix_failed_falling_back err=%s", str(_aexc)[:200])
+
+
     # Skip 20b fallback (flaky) - jump straight to OpenRouter if 120b fails
     models_to_try = [
         (cfg.PRIMARY_MODEL, primary_cap, False),
@@ -173,6 +214,8 @@ async def chat(
     last_exc: Optional[Exception] = None
     total_attempts = 0
 
+    global _current_key_index
+    _current_key_index = 0
     for model, cap, is_fallback in models_to_try:
         for attempt in range(1, cfg.MAX_RETRIES_PER_MODEL + 1):
             total_attempts += 1
@@ -194,10 +237,31 @@ async def chat(
 
             except RateLimitError as exc:
                 last_exc = exc
+                # --- TPD (tokens per day) limit: rotate key immediately ---
+                _err_str = str(exc).lower()
+                _is_tpd = ("tokens per day" in _err_str or
+                           "tpd" in _err_str or
+                           "'type': 'tokens'" in _err_str or
+                           '"type": "tokens"' in _err_str)
+                if _is_tpd and _current_key_index + 1 < _num_keys():
+                    _current_key_index += 1
+                    logger.warning(
+                        "groq_tpd_rotate model=%s new_key_index=%d (daily limit, "
+                        "skipping wait and using next key)",
+                        model, _current_key_index,
+                    )
+                    continue
                 raw_wait = _extract_retry_after(exc)
                 # If the provider asks us to wait longer than our cap, do
                 # not waste time retrying this model; move to the next one.
                 if raw_wait is not None and raw_wait > cfg.BACKOFF_MAX_SECONDS:
+                    if _current_key_index + 1 < _num_keys():
+                        _current_key_index += 1
+                        logger.warning(
+                            "groq_key_rotate model=%s new_key_index=%d",
+                            model, _current_key_index,
+                        )
+                        continue
                     logger.warning(
                         "groq rate_limit_skip model=%s retry_after=%.1fs "
                         "(> cap %.1fs) - moving to next model",
@@ -287,7 +351,9 @@ async def chat(
     except Exception as oexc:
         logger.error("openrouter_fallback_failed err=%s", redact(oexc))
 
-    raise RuntimeError(
-        f"All providers failed. Groq: {redact(last_exc)}; "
-        f"Gemini: {redact(gexc)}; OpenRouter: {redact(oexc)}"
+        raise RuntimeError(
+        "All providers failed. "
+        f"Groq: {redact(locals().get('last_exc'))}; "
+        f"Gemini: {redact(locals().get('gexc'))}; "
+        f"OpenRouter: {redact(locals().get('oexc'))}"
     )

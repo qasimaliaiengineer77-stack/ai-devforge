@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 from observability.logger import bind_job, get_logger
+from security.static_checks import run_all as run_static_checks
 from sandbox.docker_runner import (
     SandboxResult,
     cleanup_sandbox,
@@ -111,6 +112,34 @@ async def run_tester_agent(
     # The repair loop belongs to the graph (Step 16), so max_repairs is
     # recorded but the actual re-generation is delegated upstream.
     log.info("test_started", phase=1)
+
+    # -------- Dump files to disk FIRST (so we can inspect on failure) --------
+    import shutil as _sh
+    _dump_dir = root / job_id
+    if _dump_dir.exists():
+        _sh.rmtree(_dump_dir, ignore_errors=True)
+    _dump_dir.mkdir(parents=True, exist_ok=True)
+    for _f in files:
+        _fp = _dump_dir / _f["path"]
+        _fp.parent.mkdir(parents=True, exist_ok=True)
+        _fp.write_text(_f["content"], encoding="utf-8")
+    log.info("tester_dumped_files", count=len(files), path=str(_dump_dir))
+
+    # -------- Static checks BEFORE Docker (fast, no build) --------
+    static_issues = run_static_checks(files)
+    if static_issues:
+        log.warning("static_check_failed", count=len(static_issues),
+                    sample=static_issues[:5])
+        result.ok = False
+        result.error = "static_check_failed: " + "; ".join(static_issues[:8])
+        result.l2_issues = list(static_issues)
+        result.duration_ms = int((time.perf_counter() - t0) * 1000)
+        log.info("agent_completed", agent="tester", ok=False,
+                 stage="static", duration_ms=result.duration_ms)
+        return result
+
+    log.info("static_check_passed")
+
     sandbox_result = run_sandbox(
         files=files,
         job_id=job_id,
@@ -155,7 +184,7 @@ async def run_tester_agent(
 
     # Cleanup sandbox workspace (skip if KEEP_WORKSPACE=1 for debugging)
     import os as _os
-    if _os.getenv("KEEP_WORKSPACE", "0") == "1":
+    if _os.getenv("KEEP_WORKSPACE", "1") == "1":
         log.info("sandbox_workspace_kept", path=str(root / job_id))
     else:
         try:
